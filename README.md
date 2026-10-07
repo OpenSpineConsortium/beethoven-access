@@ -626,14 +626,18 @@ not the Windows one, set `BEETHOVEN_VENDOR_DIR=/mnt/c/Users/grego/.beethoven-ven
 ## Tests
 
 ```
-node --test tools/intake/worker.test.mjs tools/license/vendor.test.mjs
+node --test test/*.test.mjs
 ```
 
-An in-memory KV (binary values and metadata included), stubbed Microsoft Graph, GitHub and Resend
-(which can refuse one address, as it refuses students' before the domain is verified), and the test
-signing key as the trial key; what the Worker signs is checked with `grid/license.js`, the verifier
-Beethoven for VS Code and the grid ship, in both spellings of the prefixes (`KEY_PREFIX` unset,
-`ashley` and `beethoven`). The installation rule, grants, the v2 request with and without a CV, the CV
+Node 22 and nothing to install. An in-memory KV (binary values and metadata included), stubbed Microsoft
+Graph, GitHub and Resend (which can refuse one address, as it refuses students' before the domain is
+verified), and a signing key made for each run as the trial key; what the Worker signs is read back with a
+small verifier in `test/worker.test.mjs`, written from the format `worker.js` signs and answering in the
+words of Beethoven for VS Code's own (`grid/license.js` there), in both spellings of the prefixes
+(`KEY_PREFIX` unset, `ashley` and `beethoven`); a test of its own shows it refuses a changed key, another
+signer, a key past its grace and a changed list. The tests used to load that repository's verifier and
+test key; the check of the real verifier against what this Worker signs now belongs to that repository,
+through this one's published vectors. The installation rule, grants, the v2 request with and without a CV, the CV
 link, the three decision links, the second-installation e-mail and its two links, the mailbox proof
 with `MAIL_STUDENTS` on and off, and the admin routes `seat`, `reset-seat`, `seat-rule`, `grant` and
 `cv` each have their tests. Since 2026-09-30 afternoon also: every link tied to its version (a changed
@@ -658,5 +662,6 @@ versions replaced, the admin routes, and `admin.mjs readers` and `roster` run ag
 local server (and failing, with exit 1, against a service that has no storage list); and the whole volume:
 `.` and the root, either way written, as the one folder, in a request, an approval, the union with folders
 already read, `storage-add` and `storage-remove`, said in words in the e-mail and on the pages, and printed
-`<AccessID> .` by `readers`. `vendor.test.mjs` checks the order in which the vendor folder is found. The same
-two files run on GitHub before every deploy ([Deploying from GitHub](#deploying-from-github)).
+`<AccessID> .` by `readers`. `test/vendor.test.mjs` checks the order in which the vendor folder is found, and
+`test/trial-key.test.mjs` what `trial-key.mjs` gives `deploy.sh` (the key the Worker imports, an encrypted
+one opened with the passphrase variable, nothing printed when it cannot be read).

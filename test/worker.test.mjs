@@ -1,28 +1,110 @@
-// Tests for the access, licence and report service. Run: node --test tools/intake/worker.test.mjs
-// An in-memory KV, a fetch stub for Microsoft Graph and GitHub, and the test signing key that test
-// builds trust (extension/test-fixtures/license/test-signing-key.pem) as TRIAL_KEY_PKCS8_B64 with key
-// id "test". What the Worker signs is checked with grid/license.js, the verifier the VS Code edition and
-// the grid ship (it takes both spellings of the prefixes, ASHLEY1 and BEETHOVEN1).
+// Tests for the access, licence and report service. Run with the rest: node --test test/*.test.mjs
+// An in-memory KV, a fetch stub for Microsoft Graph, GitHub, Resend and Google, and a signing key made here
+// for each run, given to the Worker as TRIAL_KEY_PKCS8_B64 with key id "test". What the Worker signs is read
+// back with the small verifier below, nothing else of any other repository's: it follows the format
+// worker.js writes (signed(): "<prefix>.<base64url JSON payload>.<base64url signature>", an Ed25519
+// signature over the ASCII text "<prefix>.<payload part>"), takes both spellings of the prefixes (ASHLEY1
+// and BEETHOVEN1, ASHLEYREV1 and BEETHOVENREV1), and answers in the words of the VS Code edition's verifier
+// (valid, revoked, wrong-person, unknown-key, ...), which these tests used to load from that repository.
+// That verifier is checked against the Worker's real output where it lives, through the vectors this
+// repository publishes (interface/README.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import * as http from 'node:http';
 import * as os from 'node:os';
-import worker from './worker.js';
-import { readFolders, covered, union } from './storage.js';
+import worker from '../worker.js';
+import { readFolders, covered, union } from '../storage.js';
 
-const require = createRequire(import.meta.url);
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO = path.resolve(HERE, '..', '..');
-const L = require(path.join(REPO, 'grid', 'license.js'));
-const priv = crypto.createPrivateKey(fs.readFileSync(path.join(REPO, 'extension', 'test-fixtures', 'license', 'test-signing-key.pem'), 'utf8'));
+// this repository's root: wrangler.toml, deploy.sh and admin.mjs are read or run from there
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { privateKey: priv, publicKey: pub } = crypto.generateKeyPairSync('ed25519');
 const PKCS8_B64 = priv.export({ type: 'pkcs8', format: 'der' }).toString('base64');
-const KEYS = { test: L.rawFromPublicKey(crypto.createPublicKey(priv)) };
+// a public key as the verifiers list it: the raw 32 bytes of the Ed25519 key, base64
+const rawFromPublicKey = (k) => {
+  const der = k.export({ type: 'spki', format: 'der' });
+  return der.subarray(der.length - 32).toString('base64');
+};
+const KEYS = { test: rawFromPublicKey(pub) };
+
+// The verifier. keys maps a key id to its raw public key; a payload's kid picks one, as the real one does.
+const L = (() => {
+  const KEY_PREFIXES = ['ASHLEY1', 'BEETHOVEN1'];
+  const LIST_PREFIXES = ['ASHLEYREV1', 'BEETHOVENREV1'];
+  const PRODUCTS = ['ashley', 'beethoven'];
+  // the fixed DER head of an Ed25519 SubjectPublicKeyInfo; the raw 32-byte key follows it
+  const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
+  const DAY = 86400;
+  const DEFAULT_GRACE_DAYS = 14;
+  const KEY_PATTERN = /(?:ASHLEY1|BEETHOVEN1)\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{40,}/;
+  const unb64u = (s) => {
+    if (!/^[A-Za-z0-9_-]*$/.test(s)) throw new Error('not base64url');
+    return Buffer.from(s, 'base64url');
+  };
+  function open(prefixes, token, keys) {
+    const parts = String(token ?? '').trim().split('.');
+    if (parts.length !== 3 || !prefixes.includes(parts[0])) return { error: 'malformed' };
+    let payload;
+    try {
+      payload = JSON.parse(unb64u(parts[1]).toString('utf8'));
+    } catch {
+      return { error: 'malformed' };
+    }
+    if (!payload || typeof payload !== 'object') return { error: 'malformed' };
+    const raw = keys && Object.hasOwn(keys, payload.kid) ? keys[payload.kid] : undefined;
+    if (!raw) return { error: 'unknown-key', payload };
+    let ok = false;
+    try {
+      const key = crypto.createPublicKey({ key: Buffer.concat([SPKI_ED25519, Buffer.from(raw, 'base64')]), format: 'der', type: 'spki' });
+      ok = crypto.verify(null, Buffer.from(`${parts[0]}.${parts[1]}`, 'ascii'), key, unb64u(parts[2]));
+    } catch {
+      ok = false;
+    }
+    return ok ? { payload } : { error: 'bad-signature', payload };
+  }
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  function verifyLicense(key, { keys, now = Math.floor(Date.now() / 1000), identity, revoked } = {}) {
+    const o = open(KEY_PREFIXES, key, keys);
+    if (o.error === 'unknown-key') return { ok: false, status: 'unknown-key', detail: 'signed by a key not listed', payload: o.payload, identity: null };
+    if (o.error) return { ok: false, status: 'invalid', detail: o.error, identity: null };
+    const p = o.payload;
+    if (p.v !== 1 || !PRODUCTS.includes(p.product)) return { ok: false, status: 'wrong-product', detail: 'not a key for this product', payload: p, identity: null };
+    if (typeof p.exp !== 'number' || typeof p.iat !== 'number' || !p.lid) return { ok: false, status: 'invalid', detail: 'no dates or no id', payload: p, identity: null };
+    if (new Set(revoked || []).has(p.lid)) return { ok: false, status: 'revoked', detail: `${p.lid} withdrawn`, payload: p, identity: null };
+    if (typeof p.nbf === 'number' && now < p.nbf - DAY) return { ok: false, status: 'not-yet-valid', detail: 'not started', payload: p, identity: null };
+    const accessId = norm(identity && identity.accessId);
+    const email = norm(identity && identity.email);
+    const who = !accessId && !email ? null : (!!p.sub && !!accessId && norm(p.sub) === accessId) || (!!p.email && !!email && norm(p.email) === email);
+    if (who === false) return { ok: false, status: 'wrong-person', detail: `for ${p.sub || p.email}`, payload: p, identity: false };
+    const grace = typeof p.grace_days === 'number' && p.grace_days >= 0 ? p.grace_days : DEFAULT_GRACE_DAYS;
+    const daysLeft = Math.floor((p.exp - now) / DAY);
+    if (now > p.exp + grace * DAY) return { ok: false, status: 'expired', detail: 'ended', payload: p, daysLeft, identity: who };
+    if (now > p.exp) return { ok: true, status: 'grace', detail: 'ended, in grace', payload: p, daysLeft, identity: who };
+    return { ok: true, status: 'valid', detail: `licensed to ${p.name || p.sub || p.email}`, payload: p, daysLeft, identity: who };
+  }
+  // an empty text is a valid, empty list
+  function verifyRevocationList(text, keys) {
+    if (text == null || !String(text).trim()) return { ok: true, revoked: [], issued: 0, detail: 'no revocations' };
+    const o = open(LIST_PREFIXES, text, keys);
+    if (o.error) return { ok: false, revoked: [], issued: 0, detail: `rejected (${o.error})` };
+    const p = o.payload;
+    if (p.v !== 1 || !Array.isArray(p.revoked)) return { ok: false, revoked: [], issued: 0, detail: 'malformed' };
+    return { ok: true, revoked: p.revoked.map(String), issued: Number(p.issued) || 0, detail: `${p.revoked.length} withdrawn` };
+  }
+  // the payload, unchecked
+  function peek(token) {
+    try {
+      return JSON.parse(unb64u(String(token).trim().split('.')[1]).toString('utf8'));
+    } catch {
+      return null;
+    }
+  }
+  return { KEY_PATTERN, verifyLicense, verifyRevocationList, peek };
+})();
 const SITE = 'https://openspineconsortium.com';
 const ADMIN = { authorization: 'Bearer secret-admin-token' };
 
@@ -278,7 +360,36 @@ test('POST /trial refuses a person who is not approved, and points at the reques
   assert.equal((await trial(env, 'tok-ab1234')).status, 403);
 });
 
-test('approve, then /trial issues a key grid/license.js accepts for that person, three a day at most', async () => {
+// The verifier above refuses what it must, so a pass below means something: a key changed in its payload, its
+// prefix or its signature, a key signed by another key under the same id, a key past its grace, and a list
+// that was changed after it was signed.
+test('the tests\' verifier refuses a changed key, another signer, a key past its grace and a changed list', async () => {
+  const env = makeEnv();
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  const key = (await trial(env, 'tok-ab1234')).body.key;
+  const now = Math.floor(Date.now() / 1000);
+  assert.equal(L.verifyLicense(key, { keys: KEYS, now }).status, 'valid');
+  const [prefix, body, sig] = key.split('.');
+  const flip = (t, i) => t.slice(0, i) + (t[i] === 'A' ? 'B' : 'A') + t.slice(i + 1);
+  assert.equal(L.verifyLicense(`${prefix}.${flip(body, 30)}.${sig}`, { keys: KEYS, now }).status, 'invalid', 'a changed payload');
+  assert.equal(L.verifyLicense(`${prefix}.${body}.${flip(sig, 10)}`, { keys: KEYS, now }).status, 'invalid', 'a changed signature');
+  assert.equal(L.verifyLicense(`ASHLEY2.${body}.${sig}`, { keys: KEYS, now }).status, 'invalid', 'another prefix');
+  assert.equal(L.verifyLicense(`BEETHOVEN1.${body}.${sig}`, { keys: KEYS, now }).status, 'invalid', 'the signature covers the prefix');
+  const other = crypto.generateKeyPairSync('ed25519').privateKey;
+  const forged = `${prefix}.${body}.${crypto.sign(null, Buffer.from(`${prefix}.${body}`, 'ascii'), other).toString('base64url')}`;
+  assert.equal(L.verifyLicense(forged, { keys: KEYS, now }).status, 'invalid', 'another signer under the same key id');
+  const { exp } = L.peek(key);
+  assert.equal(L.verifyLicense(key, { keys: KEYS, now: exp + 86400 }).status, 'grace');
+  assert.equal(L.verifyLicense(key, { keys: KEYS, now: exp + 4 * 86400 }).status, 'expired', 'grace_days is 3');
+  await adminPost(env, 'remove', { accessId: 'ab1234' });
+  const list = await call(env, 'GET', '/revoked', { origin: null }).then((r) => r.text());
+  assert.equal(L.verifyRevocationList(list, KEYS).ok, true);
+  const [lp, lb, ls] = list.split('.');
+  assert.equal(L.verifyRevocationList(`${lp}.${flip(lb, 20)}.${ls}`, KEYS).ok, false);
+  assert.equal(L.verifyRevocationList(`ASHLEY1.${lb}.${ls}`, KEYS).ok, false, 'a key prefix is not a list prefix');
+});
+
+test('approve, then /trial issues a key the licence verifier accepts for that person, three a day at most', async () => {
   const env = makeEnv();
   await request(env);
   const ap = await adminPost(env, 'approve', { accessId: 'ab1234', note: 'lab member' });
@@ -618,7 +729,7 @@ test('POST /access_check: a no carries the request page, one page for both editi
   assert.equal((await trial(makeEnv({ REQUEST_PAGE: 'https://example.org/a.html' }), 'tok-ab1234')).body.request_page, 'https://example.org/a.html');
   // wrangler.toml, which both Worker names deploy with: the primary name, the published addresses, the
   // old signing prefixes
-  const toml = fs.readFileSync(path.join(HERE, 'wrangler.toml'), 'utf8');
+  const toml = fs.readFileSync(path.join(REPO, 'wrangler.toml'), 'utf8');
   assert.match(toml, /^name = "beethoven-access"$/m);
   assert.match(toml, /^REQUEST_PAGE = "https:\/\/openspineconsortium\.com\/beethoven\/request\.html"$/m);
   assert.match(toml, /^BEETHOVEN_REQUEST_PAGE = "https:\/\/openspineconsortium\.com\/beethoven\/request\.html"$/m);
@@ -1169,7 +1280,7 @@ test('POST /access_check: without install_id an approved account is refused upda
   }
   // wrangler.toml deploys with the rule off until Beethoven 8.0.0 is on the private listing. The student
   // e-mail is on since 2026-10-01, when Resend verified openspineconsortium.com (it was pinned off until then)
-  const toml = fs.readFileSync(path.join(HERE, 'wrangler.toml'), 'utf8');
+  const toml = fs.readFileSync(path.join(REPO, 'wrangler.toml'), 'utf8');
   assert.match(toml, /^REQUIRE_INSTALL_ID = "0"$/m);
   assert.match(toml, /^MAIL_STUDENTS = "1"$/m);
 });
@@ -2434,12 +2545,12 @@ test('F3: the daily reminder lists approved accounts not invited after an hour, 
   await runCron(quiet);
   assert.deepEqual(fetched, []);
   // what is deployed: the cron, the sending name and the links' origin, GROUP_MODE off; deploy.sh names each Worker
-  const toml = fs.readFileSync(path.join(HERE, 'wrangler.toml'), 'utf8');
+  const toml = fs.readFileSync(path.join(REPO, 'wrangler.toml'), 'utf8');
   assert.match(toml, /^\[triggers\]\ncrons = \["0 13 \* \* \*"\]$/m);
   assert.match(toml, /^REMINDER_FROM = "beethoven-access"$/m);
   assert.match(toml, /^SERVICE_ORIGIN = "https:\/\/beethoven-access\.openspineconsortium\.workers\.dev"$/m);
   assert.match(toml, /^GROUP_MODE = "manual"$/m);
-  assert.match(fs.readFileSync(path.join(HERE, 'deploy.sh'), 'utf8'), /--var "SERVICE_NAME:\$WORKER_NAME"/);
+  assert.match(fs.readFileSync(path.join(REPO, 'deploy.sh'), 'utf8'), /--var "SERVICE_NAME:\$WORKER_NAME"/);
 });
 
 test('F3: with MAIL_STUDENTS "1" the student is told after approval: the invitation, the private listing, how it works', async () => {
@@ -3127,7 +3238,7 @@ test('admin.mjs readers and roster print what grid_access.sh reads; an older ser
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   const vendor = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-vendor-'));
   fs.writeFileSync(path.join(vendor, 'admin_token'), 'secret-admin-token\n', { mode: 0o600 });
-  const run = (...args) => new Promise((ok) => execFile(process.execPath, [path.join(HERE, 'admin.mjs'), ...args], { env: { PATH: process.env.PATH, BEETHOVEN_VENDOR_DIR: vendor, BEETHOVEN_SERVICE_URL: `http://127.0.0.1:${server.address().port}` } }, (err, stdout, stderr) => ok({ code: err ? err.code : 0, stdout, stderr })));
+  const run = (...args) => new Promise((ok) => execFile(process.execPath, [path.join(REPO, 'admin.mjs'), ...args], { env: { PATH: process.env.PATH, BEETHOVEN_VENDOR_DIR: vendor, BEETHOVEN_SERVICE_URL: `http://127.0.0.1:${server.address().port}` } }, (err, stdout, stderr) => ok({ code: err ? err.code : 0, stdout, stderr })));
   try {
     let r = await run('readers');
     assert.equal(r.code, 0, r.stderr);
