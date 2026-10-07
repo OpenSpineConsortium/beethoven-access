@@ -37,14 +37,22 @@ else VENDOR="$HOME/.ashley-vendor"; fi
 DEFAULT_NAME="beethoven-access"
 WORKER_NAME="${WORKER_NAME:-$DEFAULT_NAME}"
 [[ "$WORKER_NAME" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { echo "WORKER_NAME is lower-case letters, digits and dashes, like beethoven-access"; exit 2; }
-W() { npx --yes wrangler@4 "$@"; }
 strip() { tr -d '\r\n'; }
-# one secret for this Worker name, its value on stdin (never an argument)
-S() { W secret put "$1" --name "$WORKER_NAME" >/dev/null; }
 cd "$HERE"
 
+# wrangler as .github/deploy/package-lock.json fixes it, the same tree the deploy workflow runs, installed into
+# a folder of this run's own and removed with it: what holds the account's sign-in is the code on record, not
+# whatever the registry serves that day (`npx wrangler@4` took the newest 4.x and its dependencies' ranges)
+WDIR="$(mktemp -d)"
+trap 'rm -rf "$WDIR"' EXIT
+cp .github/deploy/package.json .github/deploy/package-lock.json "$WDIR/"
+npm ci --prefix "$WDIR" --no-audit --no-fund >/dev/null
+W() { "$WDIR/node_modules/.bin/wrangler" "$@"; }
+# one secret for this Worker name, its value on stdin (never an argument)
+S() { W secret put "$1" --name "$WORKER_NAME" >/dev/null; }
+
 echo "== account"
-W whoami | grep -E "Account Name|You are logged in|Account ID" | head -3 || { echo "not logged in: run  npx wrangler@4 login  first"; exit 2; }
+W whoami | grep -E "Account Name|You are logged in|Account ID" | head -3 || { echo "not logged in: run  npx wrangler@4 login  first (the sign-in is the account's, not this folder's)"; exit 2; }
 
 echo "== KV namespaces (bound by $WORKER_NAME)"
 # a failed listing stops here: it must never be read as "no namespaces yet" and lead to new, empty ones

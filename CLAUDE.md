@@ -58,14 +58,19 @@ bash -n deploy.sh register_subdomain.sh
 CI (`.github/workflows/ci.yml`) runs the tests and `bash -n` on every pull request and push to `main`,
 with no secret. `.github/workflows/deploy.yml` deploys both names after the tests when `worker.js`,
 `storage.js` or `wrangler.toml` changes on `main`, once `CLOUDFLARE_API_TOKEN` and
-`CLOUDFLARE_ACCOUNT_ID` are saved; `deploy.sh` stays the way to make a name, its KV namespaces and its
-secrets. Nothing here has been deployed from this repository yet: not yet measured.
+`CLOUDFLARE_ACCOUNT_ID` are saved as secrets of the environment `cloudflare`, limited to `main` (never
+as repository secrets, which every branch's run can read; `README.md`, "Deploying from GitHub"). The
+workflow and `deploy.sh` both run the wrangler `.github/deploy/package-lock.json` fixes by hash;
+`deploy.sh` stays the way to make a name, its KV namespaces and its secrets. Nothing here has been
+deployed from this repository yet: not yet measured.
 
 ## Layout
 
 - `worker.js`, `storage.js`, `wrangler.toml`: the Worker.
 - `admin.mjs` (the maintainer's command line), `service.mjs` (its address), `vendor.mjs` (where the
   vendor folder is), `deploy.sh`, `trial-key.mjs`, `register_subdomain.sh`.
+- `.github/workflows/` (`ci.yml`, `deploy.yml`) and `.github/deploy/` (`package.json` and the lock that
+  pin wrangler for the workflow and for `deploy.sh`).
 - `interface/`: `INTERFACE.json`, `README.md`, `contract/` (routes, schemas, line grammar, vectors).
 - `test/`: `worker.test.mjs`, `interface.test.mjs`, `boundary.test.mjs`, `trial-key.test.mjs`,
   `vendor.test.mjs`; helpers `fake-kv.mjs`, `schema.mjs`, `vectors.mjs`.
