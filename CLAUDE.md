@@ -37,7 +37,8 @@ OnDemand" is the mark of its publisher.
   vendor folder through `deploy.sh` into `wrangler secret put` by pipe; `trial-key.mjs` refuses a
   terminal. A token sent with curl goes in a header file (`curl -H @file`, mode 0600) or through
   `--config -`, never as `-H "Authorization: Bearer $T"`. The deploy workflow's two Cloudflare secrets
-  reach one step's environment only. Nothing logs a token, an e-mail or an IP address.
+  reach the environment of two steps only, the namespace check and the deploy. Nothing logs a token, an
+  e-mail or an IP address.
 - **The public name is Beethoven.** Old names stay only where installed builds need them: the Worker
   name `ashley-service`, the prefixes `ASHLEY1`/`ASHLEYREV1` (`KEY_PREFIX`), the wire value
   `product: "bridge"`, the vendor folder's old name and variables.
@@ -59,10 +60,15 @@ CI (`.github/workflows/ci.yml`) runs the tests and `bash -n` on every pull reque
 with no secret. `.github/workflows/deploy.yml` deploys both names after the tests when `worker.js`,
 `storage.js` or `wrangler.toml` changes on `main`, once `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` are saved as secrets of the environment `cloudflare`, limited to `main` (never
-as repository secrets, which every branch's run can read; `README.md`, "Deploying from GitHub"). The
-workflow and `deploy.sh` both run the wrangler `.github/deploy/package-lock.json` fixes by hash;
-`deploy.sh` stays the way to make a name, its KV namespaces and its secrets. Nothing here has been
-deployed from this repository yet: not yet measured.
+as repository secrets, which every branch's run can read; `README.md`, "Deploying from GitHub"), the
+token made from Cloudflare's "Edit Cloudflare Workers" template and limited to the one account. Before
+deploying, the job lists the account's KV namespaces with the token and refuses when the listing fails or
+the three in `wrangler.toml` are not among them (run against a stand-in wrangler only so far; with a real
+token not yet measured). The workflow and `deploy.sh` both run the wrangler
+`.github/deploy/package-lock.json` fixes by hash; `deploy.sh` stays the way to make a name, its KV
+namespaces and its secrets. The first run (2026-10-07) reached Cloudflare and failed at the deploy itself
+with its error 10041, "KV namespace not found", before that check existed; no deploy from this repository
+has succeeded yet.
 
 ## Layout
 

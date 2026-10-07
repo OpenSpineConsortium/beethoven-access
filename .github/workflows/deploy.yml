@@ -4,14 +4,16 @@
 # Beethoven for VS Code's repository, where it was deploy-access.yml.
 #
 # It reads two secrets of the environment cloudflare, which greg saves himself and limits to main (Settings,
-# Environments, cloudflare): CLOUDFLARE_API_TOKEN, a Cloudflare API token limited to Workers, and
-# CLOUDFLARE_ACCOUNT_ID. Limited to Workers is not small: whoever holds the token can put any code under these
-# two names, and that code runs with everything the service holds, its secrets (the admin token, the trial
-# signing key, the decision key, the mail key) and its records (the approved list, and the readers list the
-# grid turns into read access on the lab volume). So the token is the environment's and not the repository's:
-# a workflow pushed on any other branch cannot read it. Both reach one step only, through its environment,
-# where wrangler reads them; neither is ever an argument or printed. Until both are saved the deploy job says
-# so and passes. Nothing here runs Claude Code or holds an Anthropic key.
+# Environments, cloudflare): CLOUDFLARE_API_TOKEN, a Cloudflare API token made from Cloudflare's Edit Cloudflare
+# Workers template (Workers Scripts, Workers KV Storage, Workers Routes and the rest it lists), with Account
+# Resources limited to the one account that holds the Workers, and CLOUDFLARE_ACCOUNT_ID. Limited to Workers is
+# not small: whoever holds the token can put any code under these two names, and that code runs with everything
+# the service holds, its secrets (the admin token, the trial signing key, the decision key, the mail key) and
+# its records (the approved list, and the readers list the grid turns into read access on the lab volume). So
+# the token is the environment's and not the repository's: a workflow pushed on any other branch cannot read
+# it. Both reach two steps only, the namespace check and the deploy, through their environment, where wrangler
+# reads them; neither is ever an argument or printed. Until both are saved the deploy job says so and passes.
+# Nothing here runs Claude Code or holds an Anthropic key.
 #
 # What stays manual, with deploy.sh on the maintainer's machine, and why:
 # - the Worker's own secrets (ADMIN_TOKEN, DECIDE_KEY, IP_SALT, the trial key, the mail settings): they come
@@ -150,7 +152,9 @@ jobs:
       # that will hold the token is the code on record, not whatever the registry serves that day. wrangler
       # 4.148.0 was the latest 4.x on 2026-10-07 (npm view wrangler version). To raise it: change the version
       # in .github/deploy/package.json, run npm install --package-lock-only there, and see that the flags
-      # below still exist in the new version.
+      # below still exist in the new version and that `kv namespace list` still prints the JSON array on
+      # stdout (in 4.148.0 it prints nothing else there; the check below skips a line around the array and
+      # refuses anything that is not one).
       - name: Install wrangler as package-lock.json fixes it
         if: steps.current.outputs.current == 'true'
         run: |
@@ -158,6 +162,64 @@ jobs:
           cp .github/deploy/package.json .github/deploy/package-lock.json "$RUNNER_TEMP/wrangler/"
           npm ci --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund
           echo "wrangler $("$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" --version)"
+
+      # The first run with the secrets saved (2026-10-07) failed at the deploy with Cloudflare's error 10041,
+      # "KV namespace not found", which does not say which of its causes it was: a token that cannot list the
+      # account's KV namespaces at all (made without the Workers KV Storage permission, wrong, expired, or
+      # another account's), or a token that lists them in an account that does not hold the three wrangler.toml
+      # binds. The deploy itself would fail the same way; this says why first, in words a person can act on,
+      # before anything is deployed, and keeps the two apart, since each points at a different fix. Only the
+      # count is printed: the listing carries the namespaces' titles, and wrangler's failure text names the
+      # account in the request's path.
+      - name: Can the token see the three KV namespaces?
+        if: steps.current.outputs.current == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_SEND_ERROR_REPORTS: 'false'
+        run: |
+          W="$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler"
+          # a listing that fails is read as "could not be listed", never as "no namespaces yet" (deploy.sh reads
+          # it the same way); its stderr is dropped, since wrangler's failure text names the account
+          LIST=$("$W" kv namespace list 2>/dev/null) || LIST=""
+          # one line: "ok <count>"; "missing <count> <the bindings whose ids are not among the listed>"; or
+          # "unlisted" when what came back is not a JSON array (a listing that failed, or a wrangler that
+          # answers otherwise)
+          VERDICT=$(printf '%s' "$LIST" | node -e '
+            const t = require("fs").readFileSync("wrangler.toml", "utf8");
+            const want = ["TRIALS", "REPORTS", "ACCESS"].map((b) => [b, (new RegExp("binding = \"" + b + "\"\\r?\\nid = \"([0-9a-f]{32})\"").exec(t) || [])[1]]);
+            let s = "";
+            process.stdin.on("data", (d) => s += d).on("end", () => {
+              // the array alone: a line a later wrangler may print around it is skipped, anything but an array refused
+              const i = s.search(/^\[/m), j = s.lastIndexOf("]");
+              let a = null;
+              if (i >= 0 && j > i) try { a = JSON.parse(s.slice(i, j + 1)); } catch {}
+              if (!Array.isArray(a)) { console.log("unlisted"); return; }
+              const seen = new Set(a.map((x) => x && x.id));
+              const missing = want.filter(([, id]) => !seen.has(id));
+              console.log(missing.length ? "missing " + a.length + " " + missing.map(([b, id]) => b + " (" + (id || "no id in wrangler.toml") + ")").join(", ") : "ok " + a.length);
+            });') || VERDICT=""
+          NOT="The access service was not deployed, and both names still run what they ran:"
+          HOW="replace whichever secret was wrong (Settings, Environments, cloudflare), and re-run this run."
+          case "$VERDICT" in
+            "ok "*)
+              echo "the token sees the account's ${VERDICT#ok } KV namespaces, the three ids wrangler.toml binds among them"
+              exit 0 ;;
+            "missing "*)
+              REST="${VERDICT#missing }"
+              TITLE="The KV namespaces are not this account's"
+              MSG="$NOT the token lists the KV namespaces of the account CLOUDFLARE_ACCOUNT_ID names (${REST%% *} of them), and the ids wrangler.toml binds as ${REST#* } are not among them. The token's permissions are not the cause, since it listed them. Either CLOUDFLARE_ACCOUNT_ID names an account the token can see that is not the one holding the Workers (a domain's Zone ID is also 32 hex characters and is not an account id), or wrangler.toml's ids are not that account's namespaces, deleted or made elsewhere (deploy.sh made them; its listing shows which are). The fix: check the account id in the Workers & Pages overview of the account that holds the Workers, $HOW" ;;
+            unlisted)
+              TITLE="The KV namespaces could not be listed"
+              MSG="$NOT with the token, the KV namespaces of the account CLOUDFLARE_ACCOUNT_ID names could not be listed at all, so nothing is known about the ids wrangler.toml binds. The token may be wrong, expired or made without the Workers KV Storage permission, or the token or CLOUDFLARE_ACCOUNT_ID may be another Cloudflare account's (a domain's Zone ID is also 32 hex characters and is not an account id); if Cloudflare only did not answer, a re-run passes, so re-run once before replacing a secret. Otherwise: make the token from Cloudflare's \"Edit Cloudflare Workers\" template with Account Resources limited to the one account that holds the Workers, check the account id in that account's Workers & Pages overview, $HOW" ;;
+            *)
+              TITLE="The namespace check could not run"
+              MSG="$NOT this check could not run (node gave no verdict), so nothing is known about the token or the namespaces. Re-run this run; if it happens again, this step itself needs fixing." ;;
+          esac
+          echo "::error title=$TITLE::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+          exit 4
 
       # deploy.sh's deploy and check, for each name in turn: the code with SERVICE_NAME set to the name (both
       # run the daily cron; only REMINDER_FROM in wrangler.toml sends the reminder), then /health on the
