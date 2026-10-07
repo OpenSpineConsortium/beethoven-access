@@ -681,4 +681,6 @@ Worker: `routes.json` names every route `worker.js` and `storage.js` answer, and
 Worker answers now, each passing its route's schemas and line grammar. After a change of what the Worker
 answers, `node test/vectors.mjs --write` rewrites them (`node test/vectors.mjs` names the ones that
 moved); the test fails until it is run. `test/fake-kv.mjs` (the in-memory KV), `test/schema.mjs` (the
-schema check) and `test/vectors.mjs` are helpers, not tests.
+schema check) and `test/vectors.mjs` are helpers, not tests. `test/boundary.test.mjs` holds the
+interface standard's rules 1 to 3: nothing here reads, runs or copies another repository's checkout,
+what this repository offers is declared in `interface/INTERFACE.json`, and it imports nothing.
