@@ -1,7 +1,8 @@
 // Beethoven's access, licence and report service: a Cloudflare Worker (no server to keep). It serves both
 // editions, Beethoven (the browser extension) and Beethoven for VS Code. Routes:
-//   GET  /allowlist  an empty list, in the shape of extension/media/allowlist.json. Until 2026-10-01 it gave
-//                    every approved AccessID to anyone; the browser edition's privacy statement (version 8)
+//   GET  /allowlist  an empty list, in the shape of the VS Code edition's extension/media/allowlist.json.
+//                    Until 2026-10-01 it gave every approved AccessID to anyone; the browser edition's
+//                    privacy statement (version 8)
 //                    says the service answers yes or no about one account and nothing about anyone else, so
 //                    the list is no longer published, and services.json no longer names this address (the
 //                    VS Code builds then leave the decision to /trial). The maintainer reads the list at

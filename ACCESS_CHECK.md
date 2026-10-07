@@ -8,7 +8,10 @@ comes from the same approved list the admin page manages for Beethoven for VS Co
 `approved:<AccessID>`), so one approval serves both editions. Since 2026-09-30 (Beethoven 8.0.0) the
 check also carries the installation's random identifier, and one approved account works on one
 installation ([Installations](#installations)). This file is the contract as built in `worker.js`
-(`accessCheck`, `installationRule`) and pinned by `worker.test.mjs`; both sides code to exactly this.
+(`accessCheck`, `installationRule`) and pinned by `test/worker.test.mjs`; both sides code to exactly this.
+The same contract for programs, with the JSON Schemas and answers the real Worker gave, is
+`interface/contract/` (`routes.json`, `access-check.request.schema.json`, `access-check.answer.schema.json`,
+`vectors/access-check-*.json`).
 
 ## Where the address comes from
 
@@ -386,6 +389,15 @@ A service deployed before these routes answers them 404 (as any unknown admin ro
 says to deploy and ends with exit 1, as it does on any answer that is not 200 plain text (a sign-in page
 in front of the service, say), and prints nothing on stdout, so the grid tool refuses rather than taking
 anyone's entries away. Deploy the service (both names) before a grid tool that reads them.
+
+## The proofs, as they were recorded
+
+The sections below are records of what was run against the deployed Worker, each on its date, and are
+kept as they were written. They were run in Beethoven for VS Code's repository, where this service lived
+as `tools/intake` until 2026-10-07, so their commands and test counts name that layout
+(`node tools/intake/admin.mjs ...`, `worker.test.mjs`, `tools/license/vendor.test.mjs`). From this
+repository's root the same commands are `node admin.mjs ...`, and the tests are
+`node --test test/*.test.mjs`.
 
 ## Proof, 2026-09-29 afternoon (before the public name changed)
 

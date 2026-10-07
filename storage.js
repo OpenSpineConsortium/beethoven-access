@@ -6,9 +6,10 @@
 // or the admin page's section "Lab storage, read only"; and GET /admin/readers.txt (what `admin.mjs readers`
 // prints) gives the approved pairs, "<AccessID> <folder>" a line, which hpcworker's tools/grid_access.sh
 // turns into the group's read on those folders by named ACL entries (its header, and
-// docs/guides/LAB_LEAD.md section 9 there, say what a reader gets and never gets). The whole volume is one folder, spelled "." (2026-10-07: the maintainer gave a lab member
-// the group's read on all of it): a form may name it as "." or as the root itself, it is stored and printed as
-// ".", and it is a reader's only folder, since it covers every other. What a person reads says it in words.
+// docs/guides/LAB_LEAD.md section 9 there, say what a reader gets and never gets). The whole volume is
+// one folder, spelled "." (2026-10-07: the maintainer gave a lab member the group's read on all of it): a
+// form may name it as "." or as the root itself, it is stored and printed as ".", and it is a reader's
+// only folder, since it covers every other. What a person reads says it in words.
 // Nothing here reaches the grid or C&IT, and the person asking is not e-mailed.
 //   POST /storage_request    the website's storage page (/beethoven/storage.html): {v: 1, access_id, name,
 //                            email, folders, purpose}. Checked like /request, limited per hashed IP apart

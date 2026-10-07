@@ -1,4 +1,31 @@
-# The access, licence and report service
+# beethoven-access
+
+Beethoven's access, licence and report service: one Cloudflare Worker (`worker.js`, with `storage.js`
+for lab storage) deployed under two names, `beethoven-access` and `ashley-service`. Until 2026-10-07 it
+lived in Beethoven for VS Code's repository as `tools/intake`; since then it is a repository of its own,
+which the others reach only over HTTP and through what `interface/INTERFACE.json` publishes.
+
+Beethoven runs Claude Code and is not an Anthropic product; "Claude" and "Claude Code" are Anthropic's
+marks, used here to say what it runs; "Open OnDemand" is the mark of its publisher.
+
+**Who uses it.** Beethoven, the browser extension (`POST /access_check`); Beethoven for VS Code (keys
+from `POST /trial`, the revocation list at `GET /revoked`, error reports at `POST /report`, and its
+`publish.sh` at `POST /admin/revoke-lid`); hpcworker's `tools/grid_access.sh` (the two lists the grid
+applies, `GET /admin/roster.txt` and `GET /admin/readers.txt`); and the website (the request, lab
+storage and admin pages). What they code to is the contract in `interface/`
+([interface/README.md](interface/README.md)): every route, the JSON Schemas of its requests and answers,
+and vectors the real Worker answered.
+
+**Testing.** `node --test test/*.test.mjs`: Node 22, nothing to install ([Tests](#tests)). CI runs the
+same on every pull request and every push to `main` (`.github/workflows/ci.yml`).
+
+**Deploying.** A change to `worker.js`, `storage.js` or `wrangler.toml` that lands on `main` is deployed
+under both names by `.github/workflows/deploy.yml`, after the tests, once greg has saved its two
+Cloudflare secrets ([Deploying from GitHub](#deploying-from-github)). `deploy.sh`, on the maintainer's
+machine, does what the workflow never does: a name's first deploy, the KV namespaces, and the Worker's
+secrets, which come from the vendor folder ([Two names](#two-names)).
+
+## What it does
 
 One Cloudflare Worker (`worker.js`) gives Beethoven's two editions five things without a server to
 keep: the list of approved AccessIDs (asked for from the website's request portal, with a Google
@@ -16,7 +43,7 @@ address. The same code runs under two Worker names, `beethoven-access` and `ashl
 
 | Route | Who calls it | What it does |
 |---|---|---|
-| `GET /allowlist` | nobody since 2026-10-01: Beethoven for VS Code read it while `services.json` named it (`beethoven.allowlistUrl`; `ashley.allowlistUrl` in 3.0.0, both empty by default) | an empty list, in the shape of `extension/media/allowlist.json` (`{"about":"The list of approved AccessIDs is not published; ...","accessIds":[]}`), open CORS, cached one minute. Until 2026-10-01 it gave every approved AccessID to anyone, which the browser edition's privacy statement (version 8) does not allow; the maintainer reads the list at `GET /admin/allowlist` |
+| `GET /allowlist` | nobody since 2026-10-01: Beethoven for VS Code read it while `services.json` named it (`beethoven.allowlistUrl`; `ashley.allowlistUrl` in 3.0.0, both empty by default) | an empty list, in the shape of the list Beethoven for VS Code bundles (`extension/media/allowlist.json` there) (`{"about":"The list of approved AccessIDs is not published; ...","accessIds":[]}`), open CORS, cached one minute. Until 2026-10-01 it gave every approved AccessID to anyone, which the browser edition's privacy statement (version 8) does not allow; the maintainer reads the list at `GET /admin/allowlist` |
 | `POST /request` | the request page, `https://openspineconsortium.com/beethoven/request.html` (the browser edition's form sends `product: "bridge"`); `/ashley/request.html`, which older builds open, redirects there | a student asks for access: stored as pending with its CV, e-mailed to the maintainer with three decision links and a CV link (see [The request portal](#the-request-portal)), filed as an issue labelled `beethoven-access-request` when `GITHUB_TOKEN` is set; answers pending, approved or denied |
 | `GET` and `POST /decide?t=<token>` | the links in the e-mails: Approve for Beethoven, Lab membership only, Deny; Move the approval, Withdraw approval; Done, invited (on the Approve page and in the daily reminder) | GET shows one question and one button; the button POSTs the decision. Each link acts only on the version of the request or refusal e-mail it was sent for ([The link](#the-request-portal)) |
 | `GET` and `POST /confirm?t=<token>` | the student's "Confirm it is you" link, when `MAIL_STUDENTS` is `"1"` | GET shows the request and one button; the button confirms it and sends it to the maintainer |
@@ -321,7 +348,7 @@ button; the button answers the file, a PDF shown in the browser tab, a Word file
 under the service's own name for it (`ab1234-cv.pdf`) and with the type the service chose from the
 bytes, `X-Content-Type-Options: nosniff`, no caching and no Referer. A PDF shown in the tab gets only
 `frame-ancestors 'none'` as its policy, because a sandbox can stop a browser's PDF viewer from opening
-it; a download gets `default-src 'none'; sandbox`. After the one view, `node tools/intake/admin.mjs cv
+it; a download gets `default-src 'none'; sandbox`. After the one view, `node admin.mjs cv
 <AccessID>` saves the file as often as needed, and `/admin/cv` answers it to the admin page.
 
 **Mailbox proof.** Anyone can type an AccessID. With `MAIL_STUDENTS` `"1"` in `wrangler.toml`,
@@ -404,7 +431,7 @@ install; the approval check is what lets an installation work. Both are needed.
    (https://groups.google.com/g/beethoven-users/members), and **Done, invited**. Invite the account
    there, with the private listing's address in the invitation's message (the student's e-mail says the
    invitation has the link), then press Done, invited: it records `invited_at` on the approval. From the
-   admin page it is **Mark invited**; from a terminal, `node tools/intake/admin.mjs invited <AccessID>`
+   admin page it is **Mark invited**; from a terminal, `node admin.mjs invited <AccessID>`
    (`clear` after the id takes the mark away).
 4. Once a day (13:00 UTC), if an approval for Beethoven has waited more than an hour without that mark,
    one e-mail lists every such account with its Google account and a Done, invited link each. Not
@@ -453,9 +480,9 @@ once:
    paste, Save As that name with "All files" so no `.txt` is added). It begins with `re_`; `deploy.sh`
    refuses a file that does not and sends nothing from it, since whatever sits in that file travels to
    Resend in a header with every e-mail.
-4. From WSL: `cd /mnt/c/Users/grego/OneDrive/Desktop/ashley && BEETHOVEN_VENDOR_DIR=/mnt/c/Users/grego/.beethoven-vendor PATH=$HOME/node22/bin:$PATH bash tools/intake/deploy.sh`,
+4. From WSL, in this repository's checkout: `BEETHOVEN_VENDOR_DIR=/mnt/c/Users/grego/.beethoven-vendor PATH=$HOME/node22/bin:$PATH bash deploy.sh`,
    then the same with `WORKER_NAME=ashley-service` in front, so both names send e-mail.
-5. Then `BEETHOVEN_VENDOR_DIR=/mnt/c/Users/grego/.beethoven-vendor PATH=$HOME/node22/bin:$PATH node tools/intake/admin.mjs notify-test`: it prints `sent: the provider answered 200` and the test arrives (the first one may land in junk).
+5. Then `BEETHOVEN_VENDOR_DIR=/mnt/c/Users/grego/.beethoven-vendor PATH=$HOME/node22/bin:$PATH node admin.mjs notify-test`: it prints `sent: the provider answered 200` and the test arrives (the first one may land in junk).
 
 Until the domain is verified at Resend, Resend sends only from `onboarding@resend.dev` and only to the
 address that owns the Resend account, which is why that account is yours. Later, to send from the

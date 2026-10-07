@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Register the account's workers.dev subdomain (needed once before the first deploy to workers.dev),
 # using the OAuth token wrangler login stored; the token travels in a header file, never on argv.
-#   bash tools/intake/register_subdomain.sh <account-id> <subdomain> [<fallback-subdomain> ...]
+#   bash register_subdomain.sh <account-id> <subdomain> [<fallback-subdomain> ...]
 set -euo pipefail
 ACCOUNT="${1:?account id}"; shift
 CFG="${WRANGLER_CONFIG:-$HOME/.config/.wrangler/config/default.toml}"
