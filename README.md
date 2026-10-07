@@ -178,7 +178,8 @@ wrangler kv namespace create ACCESS
 # node tools/license/beethoven-license.mjs init --kid trial), which keeps it as keys/trial.pem in the vendor
 # folder and adds its public key to that edition's grid/license_keys.json. trial-key.mjs reads that file and
 # writes the key into the pipe only (it refuses a terminal), so it is never on a command line, a screen or
-# in the shell history; it prints the public key on stderr, to compare with the "trial" entry there.
+# in the shell history; it refuses a key whose public half is not the one interface/contract/signing-keys.json
+# names for the key id, this repository's record of the "trial" entry there.
 node trial-key.mjs --kid trial | wrangler secret put TRIAL_KEY_PKCS8_B64
 echo trial | wrangler secret put TRIAL_KID
 
@@ -720,7 +721,8 @@ without the text routes, a sign-in page in front of it and a wrong token); and t
 already read, `storage-add` and `storage-remove`, said in words in the e-mail and on the pages, and printed
 `<AccessID> .` by `readers`. `test/vendor.test.mjs` checks the order in which the vendor folder is found, and
 `test/trial-key.test.mjs` what `trial-key.mjs` gives `deploy.sh` (the key the Worker imports, an encrypted
-one opened with the passphrase variable, nothing printed when it cannot be read).
+one opened with the passphrase variable, nothing printed when it cannot be read or is not the key
+`interface/contract/signing-keys.json` names).
 
 `test/interface.test.mjs` holds the published contract (`interface/`, its README says what it is) to the
 Worker: `routes.json` names every route `worker.js` and `storage.js` answer, and the vectors are what the

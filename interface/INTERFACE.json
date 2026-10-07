@@ -9,7 +9,7 @@
    "id": "http-api",
    "kind": "contract",
    "version": 1,
-   "summary": "The service's HTTP routes (routes.json: who calls each, how it is authorised, each request's and answer's schema by status), the JSON Schemas, the plain-text answers' grammar (lines.json: the roster and readers lists, the signed revocation list and trial key), and vectors the real Worker answered, with the public key that signed them",
+   "summary": "The service's HTTP routes (routes.json: who calls each, how it is authorised, each request's and answer's schema by status), the JSON Schemas, the plain-text answers' grammar (lines.json: the roster and readers lists, the signed revocation list and trial key), the public key of each key id the deployed service signs with (signing-keys.json), and vectors the real Worker answered, with the public key that signed them",
    "paths": ["interface/contract/"],
    "consumers": ["OpenSpineConsortium/beethoven-extension", "OpenSpineConsortium/beethoven-vscode", "OpenSpineConsortium/hpcworker", "OpenSpineConsortium/openspineconsortium.github.io"]
   },

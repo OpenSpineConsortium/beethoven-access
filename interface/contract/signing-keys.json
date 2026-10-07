@@ -1,0 +1,7 @@
+{
+ "title": "The keys the deployed service signs with",
+ "description": "The public key of each key id the service signs trial keys and the revocation list with (TRIAL_KID, which deploy.sh sets to \"trial\"): the raw 32 bytes of the Ed25519 key, base64, as Beethoven for VS Code lists its trusted keys in grid/license_keys.json. trial-key.mjs refuses to hand the Worker a private key whose public half is not the one here, so the service never signs with a key no installation trusts. A new key id comes here in a reviewed commit, once a release of that edition lists it; a client may check that every key here is one it trusts.",
+ "keys": {
+  "trial": "54k9k8NLy/tz2VVzG8RLRhoeq/GIuz+BU+mP2IAbZUg="
+ }
+}

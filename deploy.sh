@@ -15,7 +15,8 @@
 # addresses printed as the JSON the website's /beethoven/services.json carries. The website's repository
 # owns that file and takes a changed address in a reviewed commit of its own; nothing here writes it, and
 # /ashley/services.json is never touched: installed builds read it as it is.
-# Files read from the vendor folder: keys/trial.pem (the trial signing key, read by trial-key.mjs; its
+# Files read from the vendor folder: keys/trial.pem (the trial signing key, read by trial-key.mjs, which
+# refuses it unless its public key is the one interface/contract/signing-keys.json names; its
 # passphrase, if it has one, in BEETHOVEN_VENDOR_PASSPHRASE), admin_token, decide_key and ip_salt (each made
 # here when absent), notify_to (default go2432@wayne.edu), mail_from (default "Beethoven access
 # <onboarding@resend.dev>"), and resend_api_key (optional: without it no e-mail is sent).
@@ -96,7 +97,7 @@ printf '%s\n' "$OUT" | grep -E "schedule:" | sed -E 's/^[[:space:]]*/  cron /' |
 echo "== secrets ($WORKER_NAME)"
 # the key is read whole before wrangler starts, so a key that cannot be read sets no secret at all (a pipe
 # would start wrangler at once and could hand it nothing); it is held in this shell only, never an argument
-TK=$(BEETHOVEN_VENDOR_DIR="$VENDOR" node "$HERE/trial-key.mjs" --kid trial) || { echo "  the trial signing key could not be read (above); no secret was set"; exit 4; }
+TK=$(BEETHOVEN_VENDOR_DIR="$VENDOR" node "$HERE/trial-key.mjs" --kid trial) || { echo "  the trial signing key could not be read, or is not the one installations trust (above); no secret was set"; exit 4; }
 printf '%s' "$TK" | strip | S TRIAL_KEY_PKCS8_B64
 unset TK
 printf 'trial' | S TRIAL_KID

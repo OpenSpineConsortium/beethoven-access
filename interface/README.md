@@ -10,7 +10,7 @@ the e-mails' wording, the pages a person opens from an e-mail.
 
 | Export | Kind | Version | What it is | Taken by |
 | --- | --- | --- | --- | --- |
-| `http-api` | contract | 1 | `contract/`: `routes.json` (every route, who calls it, its auth, the schema of each request and of each answer by status), the JSON Schemas (`*.schema.json`), `lines.json` (the plain-text answers: the roster and readers lists, the signed revocation list and trial key), and `vectors/`, what the real Worker answered, with `vectors/key.json`, the public key that signed the vectors' key and list | beethoven-extension, beethoven-vscode, hpcworker, openspineconsortium.github.io |
+| `http-api` | contract | 1 | `contract/`: `routes.json` (every route, who calls it, its auth, the schema of each request and of each answer by status), the JSON Schemas (`*.schema.json`), `lines.json` (the plain-text answers: the roster and readers lists, the signed revocation list and trial key), `signing-keys.json` (the public key of each key id the deployed service signs keys and the revocation list with, which `deploy.sh` holds it to), and `vectors/`, what the real Worker answered, with `vectors/key.json`, the public key that signed the vectors' key and list | beethoven-extension, beethoven-vscode, hpcworker, openspineconsortium.github.io |
 | `http-api-text` | text | 1 | `ACCESS_CHECK.md` and `README.md` (Routes, The request portal, Lab storage), the same contract written for people | the same |
 
 It takes nothing from another repository (`imports` is empty).

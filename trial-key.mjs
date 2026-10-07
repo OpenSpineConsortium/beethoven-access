@@ -6,13 +6,19 @@
 // is opened with BEETHOVEN_VENDOR_PASSPHRASE (ASHLEY_VENDOR_PASSPHRASE still read). That file, its place and
 // the passphrase variables are the interface with Beethoven for VS Code's licence tool, which makes the key
 // once (beethoven-license.mjs init --kid trial in that repository) and records its public key in that
-// edition's grid/license_keys.json; nothing of that repository is read or run here. So the one check left
-// is the maintainer's: the public key is printed on stderr, to compare with the "trial" entry there.
+// edition's grid/license_keys.json; nothing of that repository is read or run here. The public half must be
+// the one interface/contract/signing-keys.json names for the key id, this repository's own record of what
+// that edition trusts: a wrong or stale vendor folder would otherwise have the service sign keys and
+// withdrawals no installation accepts, and since an installation acts only on a withdrawal it can verify,
+// nothing would say so. A key rotated on purpose goes into that file in a reviewed commit first.
 // stdout must not be a terminal: the key goes into a pipe, never onto a screen or into a scrollback.
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { vendorFolder, vendorPassphrase } from './vendor.mjs';
+
+const TRUSTED = path.join(path.dirname(fileURLToPath(import.meta.url)), 'interface', 'contract', 'signing-keys.json');
 
 function die(msg, code = 1) {
   process.stderr.write(`trial-key: ${msg}\n`);
@@ -45,5 +51,9 @@ try {
 // the Worker imports the secret as Ed25519 and nothing else
 if (key.asymmetricKeyType !== 'ed25519') die(`${file} is not an Ed25519 key`);
 const der = crypto.createPublicKey(key).export({ type: 'spki', format: 'der' });
-process.stderr.write(`trial-key: ${kid}: public key ${der.subarray(der.length - 32).toString('base64')} (Beethoven for VS Code trusts what the service signs only while this is the "${kid}" entry of its grid/license_keys.json)\n`);
+const pub = der.subarray(der.length - 32).toString('base64');
+const trusted = JSON.parse(fs.readFileSync(TRUSTED, 'utf8')).keys || {};
+if (!Object.hasOwn(trusted, kid)) die(`interface/contract/signing-keys.json names no public key for "${kid}": the service signs only with a key Beethoven for VS Code trusts, so add it there in a reviewed commit once that edition lists it`);
+if (trusted[kid] !== pub) die(`${file} is not the "${kid}" key Beethoven for VS Code trusts: its public key is ${pub}, and interface/contract/signing-keys.json names ${trusted[kid]}. Is BEETHOVEN_VENDOR_DIR the right folder? Nothing was printed for the Worker`);
+process.stderr.write(`trial-key: ${kid}: public key ${pub}, the one interface/contract/signing-keys.json names\n`);
 process.stdout.write(`${key.export({ type: 'pkcs8', format: 'der' }).toString('base64')}\n`);
