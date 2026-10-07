@@ -63,12 +63,13 @@ with no secret. `.github/workflows/deploy.yml` deploys both names after the test
 as repository secrets, which every branch's run can read; `README.md`, "Deploying from GitHub"), the
 token made from Cloudflare's "Edit Cloudflare Workers" template and limited to the one account. Before
 deploying, the job lists the account's KV namespaces with the token and refuses when the listing fails or
-the three in `wrangler.toml` are not among them (run against a stand-in wrangler only so far; with a real
-token not yet measured). The workflow and `deploy.sh` both run the wrangler
+the three in `wrangler.toml` are not among them (with the real token on 2026-10-07, run 4: it saw the
+account's three namespaces and passed). The workflow and `deploy.sh` both run the wrangler
 `.github/deploy/package-lock.json` fixes by hash; `deploy.sh` stays the way to make a name, its KV
-namespaces and its secrets. The first run (2026-10-07) reached Cloudflare and failed at the deploy itself
-with its error 10041, "KV namespace not found", before that check existed; no deploy from this repository
-has succeeded yet.
+namespaces and its secrets. The first run that reached Cloudflare (2026-10-07, run 2) failed at the deploy
+itself with its error 10041, "KV namespace not found", before that check existed: the token could not
+reach KV. With the token remade from the template, runs 3 and 4 deployed both names, and each name's
+`/health` answered `{"ok":true}`.
 
 ## Layout
 
