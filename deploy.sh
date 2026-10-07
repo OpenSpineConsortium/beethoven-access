@@ -4,33 +4,35 @@
 # wrangler.toml (Beethoven 7.0.0 on, Beethoven for VS Code 4.0.0 on), and ashley-service, kept deployed
 # with the same code because Ashley for VS Code 3.0.0 and Beethoven 4.0.0 to 6.0.0 know only that address.
 # Both run the same code, bind the same three KV namespaces (the ids in wrangler.toml) and get the same
-# secrets, so both answer from one approved list. Deploy both whenever worker.js changes:
-#   bash tools/intake/deploy.sh                                   (beethoven-access)
-#   WORKER_NAME=ashley-service bash tools/intake/deploy.sh        (the old name)
+# secrets, so both answer from one approved list. The deploy workflow (.github/workflows/deploy.yml) deploys
+# the code of both on every merge to main; this script is for what it does not do: a name's first deploy,
+# the KV namespaces and the secrets.
+#   bash deploy.sh                                   (beethoven-access)
+#   WORKER_NAME=ashley-service bash deploy.sh        (the old name)
 # Steps: the KV namespaces (the ids in wrangler.toml, checked against the account; created only on the very
 # first deploy of the default name, never for another name), the Worker itself, the secrets (piped from
-# files in the vendor folder, never on a command line), then, for the default name only, the service
-# addresses in the site repository's beethoven/services.json (SKIP_SITE=1 leaves it alone). The site
-# generator (tools/build_site.py there) never writes that file, so this is what keeps it in step; the
-# file is written only when an address in it differs. /ashley/services.json is never written: installed
-# builds read it as it is. The pages themselves are the site generator's; nothing is copied there.
-# Files read from the vendor folder: admin_token, decide_key and ip_salt (each made here when absent),
-# notify_to (default go2432@wayne.edu), mail_from (default "Beethoven access <onboarding@resend.dev>"), and
-# resend_api_key (optional: without it no e-mail is sent).
+# files in the vendor folder, never on a command line), then, for the default name only, the five service
+# addresses printed as the JSON the website's /beethoven/services.json carries. The website's repository
+# owns that file and takes a changed address in a reviewed commit of its own; nothing here writes it, and
+# /ashley/services.json is never touched: installed builds read it as it is.
+# Files read from the vendor folder: keys/trial.pem (the trial signing key, read by trial-key.mjs; its
+# passphrase, if it has one, in BEETHOVEN_VENDOR_PASSPHRASE), admin_token, decide_key and ip_salt (each made
+# here when absent), notify_to (default go2432@wayne.edu), mail_from (default "Beethoven access
+# <onboarding@resend.dev>"), and resend_api_key (optional: without it no e-mail is sent).
 # The vendor folder is the first of: BEETHOVEN_VENDOR_DIR, ASHLEY_VENDOR_DIR (the old variable, still read),
-# ~/.beethoven-vendor, ~/.ashley-vendor (the old folder, still read), ~/.beethoven-vendor (to be made).
-#   bash tools/intake/deploy.sh            (Git Bash on Windows or any shell; needs node 22 and the vendor folder)
+# ~/.beethoven-vendor, ~/.ashley-vendor (the old folder, still read), ~/.beethoven-vendor (to be made);
+# vendor.mjs has the same order.
+#   bash deploy.sh            (Git Bash on Windows or any shell; needs node 22 and the vendor folder)
 #   From WSL on the maintainer's machine (the Windows network path times out against Cloudflare):
-#   BEETHOVEN_VENDOR_DIR=/mnt/c/Users/<you>/.beethoven-vendor PATH=$HOME/node22/bin:$PATH bash tools/intake/deploy.sh
+#   BEETHOVEN_VENDOR_DIR=/mnt/c/Users/<you>/.beethoven-vendor PATH=$HOME/node22/bin:$PATH bash deploy.sh
 # Re-running is safe: existing namespaces are reused, secrets are overwritten with the same values,
 # the Worker is redeployed.
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(cd "$HERE/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ -n "${BEETHOVEN_VENDOR_DIR:-}" ]; then VENDOR="$BEETHOVEN_VENDOR_DIR"
 elif [ -n "${ASHLEY_VENDOR_DIR:-}" ]; then VENDOR="$ASHLEY_VENDOR_DIR"
 elif [ -d "$HOME/.beethoven-vendor" ] || [ ! -d "$HOME/.ashley-vendor" ]; then VENDOR="$HOME/.beethoven-vendor"
 else VENDOR="$HOME/.ashley-vendor"; fi
-SITE_REPO="${BEETHOVEN_SITE_REPO:-${ASHLEY_SITE_REPO:-$REPO/../openspineconsortium.github.io}}"
 DEFAULT_NAME="beethoven-access"
 WORKER_NAME="${WORKER_NAME:-$DEFAULT_NAME}"
 [[ "$WORKER_NAME" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { echo "WORKER_NAME is lower-case letters, digits and dashes, like beethoven-access"; exit 2; }
@@ -92,7 +94,11 @@ echo "  $URL"
 printf '%s\n' "$OUT" | grep -E "schedule:" | sed -E 's/^[[:space:]]*/  cron /' || echo "  no cron in the deploy output: check [triggers] in wrangler.toml"
 
 echo "== secrets ($WORKER_NAME)"
-BEETHOVEN_VENDOR_DIR="$VENDOR" node "$REPO/tools/license/beethoven-license.mjs" export-key --kid trial | strip | S TRIAL_KEY_PKCS8_B64
+# the key is read whole before wrangler starts, so a key that cannot be read sets no secret at all (a pipe
+# would start wrangler at once and could hand it nothing); it is held in this shell only, never an argument
+TK=$(BEETHOVEN_VENDOR_DIR="$VENDOR" node "$HERE/trial-key.mjs" --kid trial) || { echo "  the trial signing key could not be read (above); no secret was set"; exit 4; }
+printf '%s' "$TK" | strip | S TRIAL_KEY_PKCS8_B64
+unset TK
 printf 'trial' | S TRIAL_KID
 [ -s "$VENDOR/admin_token" ] || { umask 077; openssl rand -base64 32 | strip > "$VENDOR/admin_token"; }
 strip < "$VENDOR/admin_token" | S ADMIN_TOKEN
@@ -143,24 +149,16 @@ curl -fsS "$URL/health" && echo
 echo "  access_check: $URL/access_check"
 
 if [ "$WORKER_NAME" != "$DEFAULT_NAME" ]; then
-  echo "== services.json: not written for $WORKER_NAME (/ashley/services.json on the site names it and stays as installed builds read it)"
-elif [ "${SKIP_SITE:-0}" = 1 ]; then
-  echo "== services.json: left alone (SKIP_SITE=1)"
-elif [ ! -f "$SITE_REPO/beethoven/services.json" ]; then
-  echo "== services.json: no $SITE_REPO/beethoven/services.json; set BEETHOVEN_SITE_REPO to the site repository and run again"
+  echo "== services.json: nothing for $WORKER_NAME (/ashley/services.json on the website names it and stays as installed builds read it)"
 else
-  # the five service addresses, for both editions, on this host; every other key (the request and support
-  # pages) is the site's and is kept as it is. No allowlist key: the approved list is not published since
-  # 2026-10-01 (worker.js, GET /allowlist), and one left from before is removed. Written only when
-  # something differs
-  echo "== services.json ($SITE_REPO/beethoven/services.json)"
+  # the five service addresses, for both editions, on this host, as /beethoven/services.json carries them;
+  # every other key there (the request and support pages) is the website's. No allowlist key: the approved
+  # list is not published since 2026-10-01 (worker.js, GET /allowlist)
+  echo "== services.json: the website's /beethoven/services.json carries these five addresses. When one differs"
+  echo "   from what it has, the website's repository takes them in a reviewed commit; nothing here writes it:"
   node -e '
-    const fs=require("fs");const [f,u]=process.argv.slice(1);const before=fs.readFileSync(f,"utf8");const j=JSON.parse(before);
+    const u=process.argv[1];const j={};
     for (const [k,r] of [["access_check","access_check"],["request","request"],["revocation","revoked"],["license_service","trial"],["report","report"]]) j[k]=u+"/"+r;
-    delete j.allowlist;
-    const after=JSON.stringify(j,null,2)+"\n";
-    if (after===before) console.log("  unchanged: it already names "+u+" for every route");
-    else { fs.writeFileSync(f,after); console.log("  written: commit and push the site repository to publish it"); }' "$SITE_REPO/beethoven/services.json" "$URL"
-  cat "$SITE_REPO/beethoven/services.json"
+    console.log(JSON.stringify(j,null,2));' "$URL"
 fi
 echo "done: $WORKER_NAME at $URL"

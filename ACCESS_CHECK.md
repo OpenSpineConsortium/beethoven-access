@@ -19,8 +19,9 @@ installation ([Installations](#installations)). This file is the contract as bui
 
 The two hosts are one Worker deployed under two names: the same code, the same KV namespaces, the
 same secrets (README.md, "Two names"), so they give the same answer to the same check. The new file
-is in the site repository and names the new host for every route (`deploy.sh` writes its service
-addresses); the old file is kept byte for byte for the builds that read it. The extension caches
+is in the site repository and names the new host for every route (`deploy.sh` prints the service
+addresses, and the site repository takes them in a reviewed commit); the old file is kept byte for byte
+for the builds that read it. The extension caches
 `services.json` for a day. The site repository's copies are published when that repository is pushed.
 
 ## Request

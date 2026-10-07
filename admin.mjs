@@ -1,49 +1,49 @@
 #!/usr/bin/env node
 // The maintainer's command-line door to the access service, for when the admin page is not handy:
-//   node tools/intake/admin.mjs list          one line per request (mailbox, stage, age) and per approval (grants and
-//                                             its stage: submitted, confirmed, decided, invited, installed; the seat
-//                                             and the refusals), then denied, revoked and the access checks
-//   node tools/intake/admin.mjs list --json   everything as the service answers it (GET /admin/list)
-//   node tools/intake/admin.mjs add <accessId> "<name>" [<email>] ["<note>"]     approve without a request (both grants)
-//   node tools/intake/admin.mjs approve <accessId> ["<note>"]                     Beethoven and the lab; prints the next
-//                                                                                 step (the Google account to invite)
-//   node tools/intake/admin.mjs approve-lab <accessId> ["<note>"]                 lab membership only
-//   node tools/intake/admin.mjs deny <accessId> ["<reason>"]
-//   node tools/intake/admin.mjs remove <accessId>                                 withdraws approval, revokes the person's keys,
-//                                                                                 deletes their seat, CV and access-check records
-//   node tools/intake/admin.mjs invited <accessId> [clear]                        marks them invited to the Google Group
-//                                                                                 Beethoven-users (clear: takes the mark away)
-//   node tools/intake/admin.mjs grant <accessId> extension,lab|lab|extension       sets an approved person's grants exactly
-//   node tools/intake/admin.mjs seat <accessId>                                   the installation the account is bound to
-//                                                                                 (by fingerprint) and its refusals
-//   node tools/intake/admin.mjs reset-seat <accessId>                             clears the binding: the next installation
-//                                                                                 to check gets the account
-//   node tools/intake/admin.mjs seat-rule <accessId> any|one                      any: the store reviewers' mock account,
-//                                                                                 approved on a localhost portal only (from
-//                                                                                 any installation) and nowhere else; one: the rule
-//   node tools/intake/admin.mjs cv <accessId> [<file>]                            saves the CV sent with the request
-//   node tools/intake/admin.mjs notify-test                                       sends the maintainer a test e-mail; prints the provider's answer
-//   node tools/intake/admin.mjs roster                                            the approved list, one AccessID a line (GET
-//                                                                                 /admin/allowlist): what tools/grid_access.sh applies
+//   node admin.mjs list          one line per request (mailbox, stage, age) and per approval (grants and
+//                                its stage: submitted, confirmed, decided, invited, installed; the seat
+//                                and the refusals), then denied, revoked and the access checks
+//   node admin.mjs list --json   everything as the service answers it (GET /admin/list)
+//   node admin.mjs add <accessId> "<name>" [<email>] ["<note>"]     approve without a request (both grants)
+//   node admin.mjs approve <accessId> ["<note>"]                     Beethoven and the lab; prints the next
+//                                                                    step (the Google account to invite)
+//   node admin.mjs approve-lab <accessId> ["<note>"]                 lab membership only
+//   node admin.mjs deny <accessId> ["<reason>"]
+//   node admin.mjs remove <accessId>                                 withdraws approval, revokes the person's keys,
+//                                                                    deletes their seat, CV and access-check records
+//   node admin.mjs invited <accessId> [clear]                        marks them invited to the Google Group
+//                                                                    Beethoven-users (clear: takes the mark away)
+//   node admin.mjs grant <accessId> extension,lab|lab|extension       sets an approved person's grants exactly
+//   node admin.mjs seat <accessId>                                   the installation the account is bound to
+//                                                                    (by fingerprint) and its refusals
+//   node admin.mjs reset-seat <accessId>                             clears the binding: the next installation
+//                                                                    to check gets the account
+//   node admin.mjs seat-rule <accessId> any|one                      any: the store reviewers' mock account,
+//                                                                    approved on a localhost portal only (from
+//                                                                    any installation) and nowhere else; one: the rule
+//   node admin.mjs cv <accessId> [<file>]                            saves the CV sent with the request
+//   node admin.mjs notify-test                                       sends the maintainer a test e-mail; prints the provider's answer
+//   node admin.mjs roster                                            the approved list, one AccessID a line (GET
+//                                                                    /admin/allowlist): what hpcworker's tools/grid_access.sh
+//                                                                    applies
 // Lab storage, read only (storage.js): who may read which folders of the lab's storage on the grid. A folder is a
 // path under the root, like shared/data; "." (or the root itself) is all of the lab storage, and then the only folder
-//   node tools/intake/admin.mjs storage-list [--json]                             requests, readers and denials
-//   node tools/intake/admin.mjs storage-approve <accessId> [<folder>...]          the request's folders, or only those named
-//   node tools/intake/admin.mjs storage-deny <accessId> ["<reason>"]
-//   node tools/intake/admin.mjs storage-add <accessId> <folder>...                a reader without a request, or a reader's
-//                                                                                 folders set exactly
-//   node tools/intake/admin.mjs storage-remove <accessId>                         takes the reader off (their folders, a request
-//                                                                                 and a denial)
-//   node tools/intake/admin.mjs readers                                           the readers, one "<AccessID> <folder>" a line
-//                                                                                 ("<AccessID> ." for all of it): what
-//                                                                                 tools/grid_access.sh applies
-// The service address: service.mjs (BEETHOVEN_SERVICE_URL, the site's beethoven/services.json, or the
-// primary Worker's address). The admin token: admin_token in the vendor folder (../license/vendor.mjs:
-// BEETHOVEN_VENDOR_DIR, else ~/.beethoven-vendor, the old names still read), read from the file and sent
-// in a header, never taken from an argument.
+//   node admin.mjs storage-list [--json]                             requests, readers and denials
+//   node admin.mjs storage-approve <accessId> [<folder>...]          the request's folders, or only those named
+//   node admin.mjs storage-deny <accessId> ["<reason>"]
+//   node admin.mjs storage-add <accessId> <folder>...                a reader without a request, or a reader's
+//                                                                    folders set exactly
+//   node admin.mjs storage-remove <accessId>                         takes the reader off (their folders, a request
+//                                                                    and a denial)
+//   node admin.mjs readers                                           the readers, one "<AccessID> <folder>" a line
+//                                                                    ("<AccessID> ." for all of it): what
+//                                                                    hpcworker's tools/grid_access.sh applies
+// The service address: service.mjs (BEETHOVEN_SERVICE_URL, else the primary Worker's address). The admin
+// token: admin_token in the vendor folder (vendor.mjs: BEETHOVEN_VENDOR_DIR, else ~/.beethoven-vendor, the
+// old names still read), read from the file and sent in a header, never taken from an argument.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { vendorFolder } from '../license/vendor.mjs';
+import { vendorFolder } from './vendor.mjs';
 import { serviceOrigin } from './service.mjs';
 
 const token = fs.readFileSync(path.join(vendorFolder(), 'admin_token'), 'utf8').replace(/[\r\n]/g, '');
@@ -63,7 +63,7 @@ const id = (a1 || '').toLowerCase();
 // the storage list; a service deployed before storage.js answers 404, and says so plainly
 async function storageList() {
   const res = await fetch(`${base}/admin/storage-list`, { headers });
-  if (res.status === 404) { console.error('the access service has no lab storage list yet: deploy the service (tools/intake/deploy.sh) first'); process.exit(1); }
+  if (res.status === 404) { console.error('the access service has no lab storage list yet: deploy the service (the deploy workflow on a merge to main, or deploy.sh) first'); process.exit(1); }
   if (!res.ok) { console.error(`HTTP ${res.status}:`, await res.text()); process.exit(1); }
   return res.json();
 }
@@ -104,7 +104,7 @@ switch (cmd) {
     if (inv && inv.invited) console.log(`invited: ${inv.google_account} is in ${inv.group}${inv.mode === 'workspace' ? ` (${inv.address}), added by the service` : ''}`);
     else if (inv) {
       if (inv.error) console.log(`the service could not add them to the group itself: ${inv.error}`);
-      console.log(`next: invite ${inv.google_account || 'their Google account (ask them which one)'} at ${inv.members_url}, then: node tools/intake/admin.mjs invited ${id}`);
+      console.log(`next: invite ${inv.google_account || 'their Google account (ask them which one)'} at ${inv.members_url}, then: node admin.mjs invited ${id}`);
     }
     break;
   }

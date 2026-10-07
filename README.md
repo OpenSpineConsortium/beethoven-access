@@ -27,7 +27,7 @@ address. The same code runs under two Worker names, `beethoven-access` and `ashl
 | `POST /access_check` | Beethoven (`access_check` in `https://openspineconsortium.com/beethoven/services.json`; 4.0.0 to 6.0.0 read `/ashley/services.json`) | is this one account approved, on this installation? Yes or no, from the same list; contract in [ACCESS_CHECK.md](ACCESS_CHECK.md) |
 | `GET /revoked` | every installation, daily | the signed revocation list |
 | `POST /report` | installations that allow error reports | an issue labelled `diagnostic-report`; repeats add a count |
-| `/admin/*` | `https://openspineconsortium.com/beethoven/admin.html`, `publish.sh`, `admin.mjs` | `list`, `approve` (optional `grants`), `deny`, `add` (optional `grants`), `remove`, `invited`, `grant`, `seat`, `reset-seat`, `seat-rule`, `cv`, `revoke-lid`, `notify-test`, and for lab storage `storage-list`, `storage-approve`, `storage-deny`, `storage-add`, `storage-remove`, behind the bearer token `ADMIN_TOKEN`. The admin page's contract (every field of `list` and `storage-list`, every write) is in [ACCESS_CHECK.md, "The admin routes"](ACCESS_CHECK.md#the-admin-routes-the-admin-pages-contract) |
+| `/admin/*` | `https://openspineconsortium.com/beethoven/admin.html`, `admin.mjs`, the VS Code edition's `publish.sh` (`revoke-lid`) | `list`, `approve` (optional `grants`), `deny`, `add` (optional `grants`), `remove`, `invited`, `grant`, `seat`, `reset-seat`, `seat-rule`, `cv`, `revoke-lid`, `notify-test`, and for lab storage `storage-list`, `storage-approve`, `storage-deny`, `storage-add`, `storage-remove`, behind the bearer token `ADMIN_TOKEN`. The admin page's contract (every field of `list` and `storage-list`, every write) is in [ACCESS_CHECK.md, "The admin routes"](ACCESS_CHECK.md#the-admin-routes-the-admin-pages-contract) |
 | cron, `0 13 * * *` | Cloudflare, once a day | the invitation reminder: one e-mail listing the approvals for Beethoven not marked invited to the Google Group Beethoven-users after an hour ([The private listing](#the-private-listing)) |
 | `GET /health` | you | `{"ok":true}` |
 
@@ -73,20 +73,18 @@ Deploy both whenever `worker.js` or `wrangler.toml` changes (since 2026-10-07 Gi
 merge, once two secrets are saved: [Deploying from GitHub](#deploying-from-github)):
 
 ```
-cd /mnt/c/Users/grego/OneDrive/Desktop/ashley          # from WSL (the folder is beethoven-vscode after the rename)
+cd beethoven-access                             # this repository's checkout; from WSL on the maintainer's machine
 export BEETHOVEN_VENDOR_DIR=/mnt/c/Users/grego/.beethoven-vendor PATH=$HOME/node22/bin:$PATH
-bash tools/intake/deploy.sh                               # beethoven-access, then the addresses in the site's beethoven/services.json
-WORKER_NAME=ashley-service bash tools/intake/deploy.sh    # the old name: same KV ids, same secrets
+bash deploy.sh                                  # beethoven-access, then the five addresses services.json carries
+WORKER_NAME=ashley-service bash deploy.sh       # the old name: same KV ids, same secrets
 ```
 
-On the first, `deploy.sh` writes the five service addresses (`access_check`, `request`, `revocation`,
-`license_service`, `report`) into the site repository's `beethoven/services.json`, removes an
-`allowlist` key if one is there (the list is not published since 2026-10-01), and writes only when
-something differs; `SKIP_SITE=1` leaves it alone. The site's generator never writes that file, and
-`deploy.sh` never writes `/ashley/services.json`, which installed builds read as it is (it names
-`ashley-service`). `admin.mjs` and `publish.sh` take the address from `BEETHOVEN_SERVICE_URL`, else
-`license_service` in the site's `beethoven/services.json`, else `beethoven-access` (`service.mjs`); either
-name would do, since both hold the same records.
+On the first, `deploy.sh` prints the five service addresses (`access_check`, `request`, `revocation`,
+`license_service`, `report`) as the JSON the website's `/beethoven/services.json` carries. That file is the
+website's: when an address in it differs, the website's repository takes the new one in a reviewed commit
+of its own. Nothing here writes it, nor `/ashley/services.json`, which installed builds read as it is (it
+names `ashley-service`). `admin.mjs` takes the address from `BEETHOVEN_SERVICE_URL`, else
+`beethoven-access` (`service.mjs`); either name would do, since both hold the same records.
 
 ## Deploying from GitHub
 
@@ -114,7 +112,7 @@ and never printed.
 name and the KV namespaces (the workflow never creates one: it checks that `wrangler.toml` names all three
 and switches wrangler's automatic provisioning off), the Worker's secrets (they come from the vendor folder,
 which never enters CI; a deploy keeps the secrets a Worker holds, so `deploy.sh` is needed only when one
-changes), and the site's `beethoven/services.json` (written only when an address changes).
+changes), and the five addresses for the website's `beethoven/services.json`, which it prints.
 
 ## Deploy (once, from the maintainer's machine)
 
@@ -122,20 +120,22 @@ changes), and the site's `beethoven/services.json` (written only when an address
 
 ```
 npm i -g wrangler
-cd tools/intake
+cd beethoven-access                             # this repository's checkout
 wrangler login
 wrangler kv namespace create TRIALS
 wrangler kv namespace create REPORTS
 wrangler kv namespace create ACCESS
 # paste the three ids into wrangler.toml
 
-# the trial signing key: made once, piped straight into the secret store. export-key writes to stdout
-# only, so the key is never on a command line or in the shell history.
-node ../license/beethoven-license.mjs init --kid trial
-node ../license/beethoven-license.mjs export-key --kid trial | wrangler secret put TRIAL_KEY_PKCS8_B64
+# the trial signing key: made once by Beethoven for VS Code's licence tool (in that repository,
+# node tools/license/beethoven-license.mjs init --kid trial), which keeps it as keys/trial.pem in the vendor
+# folder and adds its public key to that edition's grid/license_keys.json. trial-key.mjs reads that file and
+# writes the key into the pipe only (it refuses a terminal), so it is never on a command line, a screen or
+# in the shell history; it prints the public key on stderr, to compare with the "trial" entry there.
+node trial-key.mjs --kid trial | wrangler secret put TRIAL_KEY_PKCS8_B64
 echo trial | wrangler secret put TRIAL_KID
 
-# the admin token: random, kept in the vendor folder for the admin page and for publish.sh
+# the admin token: random, kept in the vendor folder for the admin page, admin.mjs and the VS Code edition's publish.sh
 openssl rand -base64 32 > ~/.beethoven-vendor/admin_token && chmod 600 ~/.beethoven-vendor/admin_token
 wrangler secret put ADMIN_TOKEN < ~/.beethoven-vendor/admin_token
 
@@ -174,8 +174,8 @@ editions, the request page and the admin page find the service:
 }
 ```
 
-`deploy.sh` writes the five service addresses itself (for the default name only, and only when one
-differs); the two pages are the site's. There is no `allowlist` key since 2026-10-01: with none, and
+`deploy.sh` prints the five service addresses (for the default name only), and the website's repository
+takes them into the file in a reviewed commit; the two pages are the site's. There is no `allowlist` key since 2026-10-01: with none, and
 with `license_service` set, both VS Code builds skip their list check at the sign-in step and `/trial`
 decides (it refuses a person who is not approved, with the request page). Deploy order for this change: publish the site first (its `/beethoven/services.json` and `/ashley/services.json` without `allowlist`), then deploy the Worker under both names no sooner than an hour later (a day is safer). The VS Code builds cache the services file for an hour; one that still holds the old address in that hour reads the empty list and refuses its sign-in step to a student without a key, until the next fetch of the file. Beethoven reads `access_check` from it (cached for a day), the
 VS Code edition reads the other routes, and the request and admin pages read it too, so the Worker's
@@ -198,9 +198,9 @@ Worker's host, path `admin/*`; a policy that allows only your own e-mail (one-ti
 Because `admin.html` is served from the website and calls the Worker across origins, set the
 application's CORS settings to allow the origin `https://openspineconsortium.com` with
 credentials and the headers `Authorization` and `Content-Type`; the page already sends its calls
-with credentials, so the Access session cookie rides along. `publish.sh` calls the same routes from a
-terminal: create a service token for it in Access, or run it while the policy also allows the
-machine's address. The free plan covers a lab.
+with credentials, so the Access session cookie rides along. `admin.mjs`, and the VS Code edition's
+`publish.sh`, call the same routes from a terminal: create a service token for them in Access, or run them
+while the policy also allows the machine's address. The free plan covers a lab.
 
 ## The approved list, day to day
 
@@ -548,22 +548,14 @@ away: deploy the service (both names) before the grid tool that reads the reader
 
 ## Publishing your own revocation list
 
-Keys you issued with `beethoven-license.mjs` (its old name, `ashley-license.mjs`, still runs it) are
-withdrawn with the tool; the service then needs to hear about them:
-
-```
-node ../license/beethoven-license.mjs revoke --lid L-... --reason "key shared"
-bash publish.sh                    # sends every id in extension/media/revoked.txt to /admin/revoke-lid
-```
-
-`publish.sh` verifies the bundled list against `grid/license_keys.json`, reads the admin token from
-`admin_token` in the vendor folder, posts all the ids in one call (`revoke-lid` takes `{"lids": [...]}`
-as well as one `lid`; one call per id would race its own earlier writes in KV and drop some), then
-waits until `/revoked` lists them all (KV takes up to a minute to settle). From then on the service's
-list is the union of yours and its own removals. Run it from WSL with `BEETHOVEN_VENDOR_DIR` pointing
-at the vendor folder, as with `deploy.sh`. Each release still bundles
-`extension/media/revoked.txt`, which holds only the keys withdrawn with the tool; keys the service
-withdrew reach installations through `/revoked`.
+Keys issued by hand with Beethoven for VS Code's licence tool are withdrawn with that tool, and that
+repository's own `publish.sh` tells the service, as a client of two routes here: it posts every id in its
+bundled list to `POST /admin/revoke-lid` in one call (`{"lids": [...]}`; one call per id would race its own
+earlier writes in KV and drop some), with the admin token from `admin_token` in the vendor folder, then
+reads `GET /revoked` until it lists them all (KV takes up to a minute to settle). From then on the
+service's list is the union of those and its own removals, signed with the trial key. The VS Code
+edition's releases bundle only the keys withdrawn with the tool; keys the service withdrew reach
+installations through `/revoked`.
 
 ## What the service keeps
 
@@ -624,8 +616,11 @@ The private signing keys, the ledger of issued keys and the service's secrets li
 `C:/Users/grego/.beethoven-vendor` (outside OneDrive and outside every repository). It was
 `C:/Users/grego/.ashley-vendor` until 2026-09-30; a junction there points at the new folder, so an old
 path still works. Every script finds it the same way: `BEETHOVEN_VENDOR_DIR`, then `ASHLEY_VENDOR_DIR`
-(the old variable), then `~/.beethoven-vendor`, then `~/.ashley-vendor` (`tools/license/vendor.mjs`;
-`deploy.sh` and `tools/publish_marketplace.sh` spell out the same order). From WSL, where the home is
+(the old variable), then `~/.beethoven-vendor`, then `~/.ashley-vendor` (`vendor.mjs`, this repository's
+own copy of the VS Code edition's; `deploy.sh` spells out the same order). The trial signing key is
+`keys/trial.pem` there, made by the VS Code edition's licence tool and read here by `trial-key.mjs`, with
+`BEETHOVEN_VENDOR_PASSPHRASE` when it is encrypted: that layout, not any code, is what the two repositories
+share. From WSL, where the home is
 not the Windows one, set `BEETHOVEN_VENDOR_DIR=/mnt/c/Users/grego/.beethoven-vendor`.
 
 ## Tests

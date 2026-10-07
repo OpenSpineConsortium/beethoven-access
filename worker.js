@@ -44,8 +44,8 @@
 //                    adds a count to the open issue instead of a new one (KV REPORTS).
 //   GET  /revoked    the signed revocation list. The Worker signs it itself, with the trial key, whenever
 //                    a person is removed or a key withdrawn (KV ACCESS revoked_signed), ASHLEYREV1 or
-//                    BEETHOVENREV1 as KEY_PREFIX says; grid/license.js accepts it because the trial key
-//                    id is in grid/license_keys.json.
+//                    BEETHOVENREV1 as KEY_PREFIX says; the VS Code edition's grid/license.js accepts it
+//                    because the trial key id is in its grid/license_keys.json.
 //   POST /access_check  Beethoven (the browser extension) asks whether one account is approved (ACCESS_CHECK.md
 //                    has the contract). No key is involved: the account name is the one the person's own
 //                    portal shows after their university sign-in. Beethoven 8.0.0 on also sends install_id,
@@ -275,7 +275,8 @@ async function sameSecret(given, expected) {
 }
 
 // the website's pages call /request and /admin/* from the browser; only that origin is allowed. A call
-// without an Origin header (curl, publish.sh) is not a browser and passes: the token is the wall there.
+// without an Origin header (curl, the VS Code edition's publish.sh) is not a browser and passes: the token is
+// the wall there.
 function siteCors(request, env) {
   const origin = request.headers.get('origin');
   if (origin && origin !== siteOrigin(env)) return null;
@@ -335,7 +336,8 @@ async function countToday(ns, key, cap) {
 
 const github = (env) => ({ authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: 'application/vnd.github+json', 'user-agent': USER_AGENT, 'x-github-api-version': '2022-11-28', 'content-type': 'application/json' });
 
-// grid/license.js's token shape: "<prefix>.<base64url JSON>" signed as ASCII, the signature appended
+// the token shape of the VS Code edition's grid/license.js: "<prefix>.<base64url JSON>" signed as ASCII, the
+// signature appended
 async function signed(env, prefix, payload) {
   const der = Uint8Array.from(atob(env.TRIAL_KEY_PKCS8_B64), (c) => c.charCodeAt(0));
   const key = await crypto.subtle.importKey('pkcs8', der, { name: 'Ed25519' }, false, ['sign']);
@@ -351,7 +353,8 @@ async function signTrial(env, fields) {
     v: 1,
     kid: env.TRIAL_KID,
     lid: `L-${b64u(crypto.getRandomValues(new Uint8Array(9)))}`,
-    // a field every licence verifier checks (grid/license.js), not a name anyone reads: it stays "ashley"
+    // a field every licence verifier checks (the VS Code edition's grid/license.js), not a name anyone reads:
+    // it stays "ashley"
     product: 'ashley',
     edition: 'trial',
     sub: fields.accessId,
@@ -365,7 +368,7 @@ async function signTrial(env, fields) {
   return { key: await signed(env, signingPrefixes(env).key, payload), payload };
 }
 
-// the revocation list, field for field as grid/license.js signRevocationList writes it
+// the revocation list, field for field as the VS Code edition's grid/license.js signRevocationList writes it
 async function revoke(env, lids) {
   const all = [...new Set([...((await env.ACCESS.get('revoked', 'json')) || []), ...lids].map(String))].sort();
   await env.ACCESS.put('revoked', JSON.stringify(all));
@@ -537,7 +540,7 @@ async function requestMail(env, base, accessId, rec, { askedAgain, member, chang
     if (rec.cv) links.cv = `${base}/cv?t=${await decideToken(env, { access_id: accessId, decision: 'cv', nonce: newNonce(), exp, ref: rec.ref })}`;
   }
   const how = links
-    ? `Each decision link opens a page with one button; nothing is decided until you press it. Use one of the three, once: after that all three stop working. They work until ${links.until}, for this version of the request: if the form is sent again with changes, they answer "replaced" and a newer e-mail comes.${links.cv ? ` The CV link works the same way, once; after that, node tools/intake/admin.mjs cv ${accessId} saves the file.` : ''}`
+    ? `Each decision link opens a page with one button; nothing is decided until you press it. Use one of the three, once: after that all three stop working. They work until ${links.until}, for this version of the request: if the form is sent again with changes, they answer "replaced" and a newer e-mail comes.${links.cv ? ` The CV link works the same way, once; after that, node admin.mjs cv ${accessId} saves the file.` : ''}`
     : 'The links are off because the service has no DECIDE_KEY; decide on the admin page.';
   const group = google
     ? `After Approve for Beethoven, the page that opens shows the next step: add ${google} to the Google Group ${GROUP_NAME}, so the invitation to install Beethoven from the private listing reaches them.`
@@ -927,8 +930,8 @@ async function conflictMail(env, base, accessId, rec, seat, refused, ref) {
   const advice = 'If they reinstalled Beethoven or changed computers, move the approval: the new installation works from its next check and the old one is refused. If the account is being shared, withdraw the approval. The account name in a check is not proved, so anyone who knows the AccessID can cause this e-mail: ask the person before you withdraw. Doing nothing keeps Beethoven working on the first installation only.';
   const how = links
     ? `Each link opens a page with one button; nothing changes until you press it. Use one of the two, once. They work until ${links.until}, until a newer e-mail about this account replaces them, or until the refusal is settled another way.`
-    : `The links are off because the service has no DECIDE_KEY; use node tools/intake/admin.mjs reset-seat ${accessId} (the next installation to check then gets it) or remove ${accessId}.`;
-  const footer = `Sent by the Beethoven access service when an approved account is checked from a second installation; one e-mail per account a day at most. An installation is shown by its fingerprint (the first 8 characters of a SHA-256 of its random identifier); node tools/intake/admin.mjs seat ${accessId} shows the same.`;
+    : `The links are off because the service has no DECIDE_KEY; use node admin.mjs reset-seat ${accessId} (the next installation to check then gets it) or remove ${accessId}.`;
+  const footer = `Sent by the Beethoven access service when an approved account is checked from a second installation; one e-mail per account a day at most. An installation is shown by its fingerprint (the first 8 characters of a SHA-256 of its random identifier); node admin.mjs seat ${accessId} shows the same.`;
   const text = [
     `${label} asked from a second installation; it was refused.`,
     '',
@@ -1507,7 +1510,7 @@ async function stalePage(env, c, recs, label, toAdmin) {
 async function holderPage(label, holder, installId, toAdmin) {
   return decidePage(409, 'This installation is in use by another account', [
     `The installation ${await installShort(installId)}, which ${label} asked from, is the one ${holder} uses: one installation serves one account, so the approval cannot move there while ${holder} holds it.`,
-    `To go on, withdraw the approval of ${holder} first (Remove on the admin page, or node tools/intake/admin.mjs remove ${holder}); or, if ${holder} no longer uses that installation, reset its seat (node tools/intake/admin.mjs reset-seat ${holder}). Then open this link again: it was not used up.`,
+    `To go on, withdraw the approval of ${holder} first (Remove on the admin page, or node admin.mjs remove ${holder}); or, if ${holder} no longer uses that installation, reset its seat (node admin.mjs reset-seat ${holder}). Then open this link again: it was not used up.`,
     'Nothing was changed.',
     toAdmin('Every approval is on'),
   ]);
@@ -1564,7 +1567,7 @@ async function decide(request, env, url, ctx) {
     ]);
   }
   if (c.decision === 'invited') return decidePage(200, 'Marked invited.', [`${label} is recorded as invited to the Google Group ${GROUP_NAME} (${readableTime(r.body.invited_at)}). The daily reminder no longer lists them.`, toAdmin('Every approval is on')]);
-  if (c.decision === 'lab') return decidePage(200, 'Approved for lab membership.', [`${label} is recorded as a lab member. Beethoven stays closed to them until you approve them for it: with the Approve for Beethoven link of a later request, or node tools/intake/admin.mjs grant ${c.access_id} extension,lab.`, 'They are not told automatically; let them know.', toAdmin('Every request and approval is on')]);
+  if (c.decision === 'lab') return decidePage(200, 'Approved for lab membership.', [`${label} is recorded as a lab member. Beethoven stays closed to them until you approve them for it: with the Approve for Beethoven link of a later request, or node admin.mjs grant ${c.access_id} extension,lab.`, 'They are not told automatically; let them know.', toAdmin('Every request and approval is on')]);
   if (c.decision === 'deny') return decidePage(200, 'Denied.', [r.body.lab_member ? `${label} is not approved for Beethoven and stays a lab member. They are not told automatically.` : `${label} is not approved. They are not told automatically, and the request page will say not approved if they ask again.`, toAdmin('To change this, use')]);
   if (c.decision === 'move') return decidePage(200, 'Moved.', [`Beethoven works for ${label} on the installation ${await installShort(c.install_id)} from its next check; the one used before is refused from its next check.`, toAdmin('Every approval is on')]);
   const n = r.body.revoked.length;
@@ -1622,7 +1625,7 @@ async function cvRoute(request, env, url) {
   if (!env.DECIDE_KEY) return decidePage(503, 'E-mail links are off', ['The access service has no DECIDE_KEY, so it cannot check this link.']);
   const { t, confirmed } = await linkForm(request, url);
   const tok = await readDecideToken(env, t, CV_DECISIONS);
-  const again = (id) => ({ muted: `To see it again: node tools/intake/admin.mjs cv ${id} (it saves the file)` });
+  const again = (id) => ({ muted: `To see it again: node admin.mjs cv ${id} (it saves the file)` });
   if (!tok.ok && tok.why === 'expired') return decidePage(410, 'This link has expired', [`A CV link works for ${DECIDE_DAYS} days. Nothing was sent.`, again(tok.claim.access_id)]);
   if (!tok.ok) return decidePage(400, 'This link is not valid', ['It may have been cut short or changed on the way. Nothing was sent.']);
   const c = tok.claim;
@@ -1732,7 +1735,8 @@ async function admin(request, env, url, ctx) {
   }
   if (route === 'revoke-lid') {
     // one lid, or several in one call: KV is eventually consistent, so several quick calls that each
-    // read the list, add one id and write it back can lose the earlier ids; publish.sh sends them all at once
+    // read the list, add one id and write it back can lose the earlier ids; the VS Code edition's publish.sh
+    // sends them all at once
     const lids = [...new Set((Array.isArray(body.lids) ? body.lids : [body.lid]).map((x) => String(x ?? '').trim()))];
     if (!lids.length || lids.length > 500 || !lids.every((l) => LID.test(l))) return reply(400, { error: 'lid looks like L-... (or lids: a list of them, 500 at most)' });
     const revoked = await revoke(env, lids);

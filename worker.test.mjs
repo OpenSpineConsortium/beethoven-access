@@ -391,7 +391,7 @@ test('revoke-lid withdraws one key and keeps the earlier ones on the list', asyn
   assert.equal((await trial(env, 'tok-ab1234')).status, 200);
   await adminPost(env, 'revoke-lid', { lid: 'L-3qou7DI5toan' });
   assert.equal((await env.ACCESS.get('revoked', 'json')).length, 2);
-  // several at once (what publish.sh sends), in one read-and-write of the list
+  // several at once (what the VS Code edition's publish.sh sends), in one read-and-write of the list
   const many = await adminPost(env, 'revoke-lid', { lids: ['L-kBUmEepmm5D8', 'L-Dw8z5-3R4RAK', 'L-kBUmEepmm5D8'] });
   assert.equal(many.status, 200);
   assert.deepEqual(many.body.lids, ['L-kBUmEepmm5D8', 'L-Dw8z5-3R4RAK']);
@@ -1817,7 +1817,7 @@ test('F1 a: Move refuses with a plain page while the refused installation is ano
   for (const [why, p] of [['opened', await open(env, move)], ['pressed', await press(env, move)]]) {
     assert.equal(p.status, 409, why);
     plainPage(p, why);
-    for (const s of ['<h1>This installation is in use by another account</h1>', short(IB), 'cd5678', 'withdraw the approval of cd5678 first', 'node tools/intake/admin.mjs remove cd5678', 'Nothing was changed', ADMIN_PAGE]) assert.ok(p.text.includes(s), `${why}: ${s}`);
+    for (const s of ['<h1>This installation is in use by another account</h1>', short(IB), 'cd5678', 'withdraw the approval of cd5678 first', 'node admin.mjs remove cd5678', 'Nothing was changed', ADMIN_PAGE]) assert.ok(p.text.includes(s), `${why}: ${s}`);
     assert.ok(!p.text.includes('<button'), `${why}: no button to press`);
   }
   assert.equal(snapshot(env), before, 'nothing written and the link not spent');
