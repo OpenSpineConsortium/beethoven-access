@@ -17,6 +17,12 @@
   "exp",
   "grace_days"
  ],
+ "not": {
+  "description": "a key that names an institution (a domain field, or the edition \"site\") is refused by every VS Code build whoever holds it; a trial key names one person",
+  "required": [
+   "domain"
+  ]
+ },
  "properties": {
   "v": {
    "const": 1

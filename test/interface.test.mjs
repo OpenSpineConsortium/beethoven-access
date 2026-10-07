@@ -114,6 +114,12 @@ test('the check refuses what it should: a pass would mean nothing otherwise', ()
   assert.ok(answer.errors({ approved: false, access_id: 'ab1234' }).length, 'a no always carries requestPage');
   assert.ok(answer.errors({ approved: false, access_id: 'ab1234', reason: 'tired', requestPage: 'https://x' }).length);
   assert.ok(checker('allowlist.answer.schema.json').errors({ about: '', accessIds: ['ab1234'] }).length, 'the public list names nobody');
+  // a trial key names one person: what names an institution, every VS Code build refuses
+  const trialKey = checker('trial-key.payload.schema.json');
+  const payload = { v: 1, kid: 'trial', lid: 'L-AAAAAAAAAAAA', product: 'ashley', edition: 'trial', sub: 'ab1234', email: 'ab1234@wayne.edu', iat: 1, nbf: 1, exp: 2, grace_days: 3 };
+  assert.deepEqual(trialKey.errors(payload), []);
+  assert.ok(trialKey.errors({ ...payload, domain: 'wayne.edu' }).length, 'a key with a domain');
+  assert.ok(trialKey.errors({ ...payload, edition: 'site' }).length, 'a site key');
   assert.ok(checker('admin.schema.json#/$defs/seat.answer').errors({ accessId: 'ab1234', any_installation: false, seat: { install_short: '0123456789abcdef0123456789abcdef', first_seen: 'x', last_seen: 'x' }, conflict: null }).length, 'a fingerprint, never the identifier');
   assert.equal(listErrors('roster', 'ab1234\nAB1234\n').length > 0, true);
   assert.equal(listErrors('roster', 'ab1234').length > 0, true, 'every line ends with a newline');

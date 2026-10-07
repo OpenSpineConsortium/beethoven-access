@@ -74,6 +74,8 @@ const L = (() => {
     if (o.error) return { ok: false, status: 'invalid', detail: o.error, identity: null };
     const p = o.payload;
     if (p.v !== 1 || !PRODUCTS.includes(p.product)) return { ok: false, status: 'wrong-product', detail: 'not a key for this product', payload: p, identity: null };
+    // a key for a whole institution: every VS Code build refuses it whoever holds it, so a trial key must never be one
+    if (p.domain || p.edition === 'site') return { ok: false, status: 'invalid', detail: 'issued for a whole institution, not for one person', payload: p, identity: null };
     if (typeof p.exp !== 'number' || typeof p.iat !== 'number' || !p.lid) return { ok: false, status: 'invalid', detail: 'no dates or no id', payload: p, identity: null };
     if (new Set(revoked || []).has(p.lid)) return { ok: false, status: 'revoked', detail: `${p.lid} withdrawn`, payload: p, identity: null };
     if (typeof p.nbf === 'number' && now < p.nbf - DAY) return { ok: false, status: 'not-yet-valid', detail: 'not started', payload: p, identity: null };
@@ -363,9 +365,9 @@ test('POST /trial refuses a person who is not approved, and points at the reques
 });
 
 // The verifier above refuses what it must, so a pass below means something: a key changed in its payload, its
-// prefix or its signature, a key signed by another key under the same id, a key past its grace, and a list
-// that was changed after it was signed.
-test('the tests\' verifier refuses a changed key, another signer, a key past its grace and a changed list', async () => {
+// prefix or its signature, a key signed by another key under the same id, a key for a whole institution, a key
+// past its grace, and a list that was changed after it was signed.
+test('the tests\' verifier refuses a changed key, another signer, an institution\'s key, a key past its grace and a changed list', async () => {
   const env = makeEnv();
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
   const key = (await trial(env, 'tok-ab1234')).body.key;
@@ -380,6 +382,14 @@ test('the tests\' verifier refuses a changed key, another signer, a key past its
   const other = crypto.generateKeyPairSync('ed25519').privateKey;
   const forged = `${prefix}.${body}.${crypto.sign(null, Buffer.from(`${prefix}.${body}`, 'ascii'), other).toString('base64url')}`;
   assert.equal(L.verifyLicense(forged, { keys: KEYS, now }).status, 'invalid', 'another signer under the same key id');
+  // the same signer, a payload that names an institution
+  const signedAs = (p) => {
+    const b = Buffer.from(JSON.stringify(p)).toString('base64url');
+    return `${prefix}.${b}.${crypto.sign(null, Buffer.from(`${prefix}.${b}`, 'ascii'), priv).toString('base64url')}`;
+  };
+  assert.equal(L.verifyLicense(signedAs(L.peek(key)), { keys: KEYS, now }).status, 'valid', 'signedAs signs as the Worker does');
+  assert.equal(L.verifyLicense(signedAs({ ...L.peek(key), domain: 'wayne.edu' }), { keys: KEYS, now }).status, 'invalid', 'a key with a domain');
+  assert.equal(L.verifyLicense(signedAs({ ...L.peek(key), edition: 'site' }), { keys: KEYS, now }).status, 'invalid', 'a site key');
   const { exp } = L.peek(key);
   assert.equal(L.verifyLicense(key, { keys: KEYS, now: exp + 86400 }).status, 'grace');
   assert.equal(L.verifyLicense(key, { keys: KEYS, now: exp + 4 * 86400 }).status, 'expired', 'grace_days is 3');
