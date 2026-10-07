@@ -298,7 +298,8 @@ An **approval** (`approved`):
 
 **`GET /admin/allowlist`** answers 200 with `{"about":"AccessIDs approved to use Beethoven","accessIds":[...]}`:
 the AccessIDs with the grant `extension`, sorted, without the store reviewers' mock account; the list
-the public `GET /allowlist` gave to anyone until 2026-10-01. The page does not use it.
+the public `GET /allowlist` gave to anyone until 2026-10-01. The page does not use it. The same AccessIDs
+as plain text are `GET /admin/roster.txt` ([The lists the grid reads](#the-lists-the-grid-reads)).
 
 A **denial** (`denied`): `accessId`, `name`, `email`, `google_account`, `note`, `requested_at`,
 `submitted_at`, `confirmed_at`, `mailbox`, `ref`, `denied_at`, `decided_at` (the same time), `decision: "deny"`,
@@ -358,9 +359,32 @@ each sorted by `accessId`. `note` is what the person said they need the folders 
 | `storage-add` | `{ accessId, folders, name?, note? }` | `{ status: "approved", accessId, record }` | a reader without a request, or a reader's folders set exactly (an empty list is refused: use `storage-remove`); a request or a denial on record goes |
 | `storage-remove` | `{ accessId }` | `{ status: "removed", accessId, folders? }`; 404 when there is no storage record | every storage record of the person: their folders, a request and a denial |
 
-`admin.mjs readers` prints `<accessId> <folder>` for each reader and folder, sorted, and nothing else
-(`<accessId> .` for a reader of the whole volume): what `tools/grid_access.sh` in `hpcworker` applies.
-Against a service without `storage-list` it prints nothing and ends with exit 1.
+`admin.mjs readers` prints `GET /admin/readers.txt` as it comes: `<accessId> <folder>` for each reader and
+folder, sorted, and nothing else (`<accessId> .` for a reader of the whole volume), what
+`tools/grid_access.sh` in `hpcworker` applies ([The lists the grid reads](#the-lists-the-grid-reads)).
+
+### The lists the grid reads (2026-10-07)
+
+Two plain-text routes give the lists `tools/grid_access.sh` in `hpcworker` applies on the grid, and
+`admin.mjs roster` and `admin.mjs readers` print their bodies byte for byte. Same address, token, origin
+and CORS as above; a wrong or missing token is the JSON 401 and another site's page the JSON 403 of every
+admin route; a POST to either is an unknown write (404).
+
+| Route | Body (`text/plain; charset=utf-8`, `cache-control: no-store`) |
+|---|---|
+| **`GET /admin/roster.txt`** | the approved list: one AccessID a line, the same AccessIDs in the same order as `GET /admin/allowlist` (the grant `extension`, sorted, without the store reviewers' mock account) |
+| **`GET /admin/readers.txt`** | the readers of lab storage: `<AccessID> <folder>` a line, by AccessID and then folder, `<AccessID> .` for a reader of the whole volume |
+
+The grammar, which `hpcworker`'s tool checks again on its side: every line ends with a newline (`\n`, never
+`\r`), and an empty list is an empty body, never a blank line. A roster line is an AccessID, two lower-case
+letters and four digits (`^[a-z]{2}[0-9]{4}$`). A readers line is an AccessID, one space and a folder as
+`storage.js` stores it: `.`, or parts of letters, digits, dots, dashes and underscores, each starting with
+a letter, a digit or an underscore, joined by `/`, 200 characters at most.
+
+A service deployed before these routes answers them 404 (as any unknown admin route); `admin.mjs` then
+says to deploy and ends with exit 1, as it does on any answer that is not 200 plain text (a sign-in page
+in front of the service, say), and prints nothing on stdout, so the grid tool refuses rather than taking
+anyone's entries away. Deploy the service (both names) before a grid tool that reads them.
 
 ## Proof, 2026-09-29 afternoon (before the public name changed)
 

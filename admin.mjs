@@ -24,8 +24,8 @@
 //   node admin.mjs cv <accessId> [<file>]                            saves the CV sent with the request
 //   node admin.mjs notify-test                                       sends the maintainer a test e-mail; prints the provider's answer
 //   node admin.mjs roster                                            the approved list, one AccessID a line (GET
-//                                                                    /admin/allowlist): what hpcworker's tools/grid_access.sh
-//                                                                    applies
+//                                                                    /admin/roster.txt, printed as it comes): what
+//                                                                    hpcworker's tools/grid_access.sh applies
 // Lab storage, read only (storage.js): who may read which folders of the lab's storage on the grid. A folder is a
 // path under the root, like shared/data; "." (or the root itself) is all of the lab storage, and then the only folder
 //   node admin.mjs storage-list [--json]                             requests, readers and denials
@@ -36,7 +36,8 @@
 //   node admin.mjs storage-remove <accessId>                         takes the reader off (their folders, a request
 //                                                                    and a denial)
 //   node admin.mjs readers                                           the readers, one "<AccessID> <folder>" a line
-//                                                                    ("<AccessID> ." for all of it): what
+//                                                                    ("<AccessID> ." for all of it; GET
+//                                                                    /admin/readers.txt, printed as it comes): what
 //                                                                    hpcworker's tools/grid_access.sh applies
 // The service address: service.mjs (BEETHOVEN_SERVICE_URL, else the primary Worker's address). The admin
 // token: admin_token in the vendor folder (vendor.mjs: BEETHOVEN_VENDOR_DIR, else ~/.beethoven-vendor, the
@@ -66,6 +67,18 @@ async function storageList() {
   if (res.status === 404) { console.error('the access service has no lab storage list yet: deploy the service (the deploy workflow on a merge to main, or deploy.sh) first'); process.exit(1); }
   if (!res.ok) { console.error(`HTTP ${res.status}:`, await res.text()); process.exit(1); }
   return res.json();
+}
+// The two lists the grid tool reads, exactly as the service writes them. grid_access.sh takes whatever this
+// prints, so a failure ends non-zero with nothing on stdout, never an empty list that would take entries away:
+// a service deployed before the route answers 404, and anything but plain text (a sign-in page in front of
+// the service, say) is not the list.
+async function gridList(route, what) {
+  const res = await fetch(`${base}/admin/${route}`, { headers });
+  if (res.status === 404) { console.error(`the access service does not give ${what} yet: deploy the service (the deploy workflow on a merge to main, or deploy.sh) first`); process.exit(1); }
+  if (!res.ok) { console.error(`HTTP ${res.status}:`, await res.text()); process.exit(1); }
+  const type = res.headers.get('content-type') || '';
+  if (!type.startsWith('text/plain')) { console.error(`the access service answered ${type || 'something without a type'} instead of ${what}; nothing printed`); process.exit(1); }
+  process.stdout.write(await res.text());
 }
 // a time in one short column: the date and the minute, UTC; a dash when there is none
 const at = (t) => (t ? String(t).slice(0, 16).replace('T', ' ') : '-');
@@ -146,11 +159,7 @@ switch (cmd) {
     if (!j.sent) process.exit(1);
     break;
   }
-  case 'roster': {
-    const j = await call('allowlist');
-    for (const a of j.accessIds || []) console.log(a);
-    break;
-  }
+  case 'roster': await gridList('roster.txt', 'the approved list as text'); break;
   case 'storage-list': {
     const j = await storageList();
     if (a1 === '--json') {
@@ -179,11 +188,6 @@ switch (cmd) {
     break;
   }
   case 'storage-remove': console.log(JSON.stringify(await call('storage-remove', { accessId: id }))); break;
-  case 'readers': {
-    // grid_access.sh reads this: a failure must end non-zero, never print an empty list
-    const j = await storageList();
-    for (const r of j.readers || []) for (const f of r.folders || []) console.log(`${r.accessId} ${f}`);
-    break;
-  }
+  case 'readers': await gridList('readers.txt', 'the readers list'); break;
   default: console.error('usage: admin.mjs list [--json] | invited <id> [clear] | add <id> "<name>" [<email>] ["<note>"] | approve <id> ["<note>"] | approve-lab <id> ["<note>"] | deny <id> ["<reason>"] | remove <id> | grant <id> extension,lab|lab|extension | seat <id> | reset-seat <id> | seat-rule <id> any|one | cv <id> [<file>] | notify-test | roster | storage-list [--json] | storage-approve <id> [<folder>...] | storage-deny <id> ["<reason>"] | storage-add <id> <folder>... | storage-remove <id> | readers'); process.exit(2);
 }

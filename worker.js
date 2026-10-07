@@ -78,7 +78,7 @@
 // 4.0.0 to 6.0.0 were built with that address and know no other), bound to the same KV namespaces and
 // given the same secrets, so both answer from one approved list.
 
-import { storageService } from './storage.js';
+import { storageService, readerLines } from './storage.js';
 const MAX_REPORT_BYTES = 64 * 1024;
 const MAX_BODY_BYTES = 8 * 1024;
 // a v2 request with a CV: 5 MB of file is about 6.7 MB of base64, and the other fields are small
@@ -185,6 +185,8 @@ function cvKind(b) {
 const sizeText = (n) => (n < 1048576 ? `${Math.ceil(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 
 const json = (status, body, headers) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...(headers || {}) } });
+// a list as plain text, one item a line and a newline after each; an empty body when the list is empty
+const textList = (status, lines, headers) => new Response(lines.map((l) => `${l}\n`).join(''), { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...(headers || {}) } });
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const ascii = (s) => new TextEncoder().encode(s);
 const hex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -1714,6 +1716,11 @@ async function admin(request, env, url, ctx) {
   }
   // the approved list as /allowlist gave it to anyone until 2026-10-01, for the maintainer only
   if (request.method === 'GET' && route === 'allowlist') return reply(200, { about: 'AccessIDs approved to use Beethoven', accessIds: await approvedIds(env) });
+  // The two lists hpcworker's tools/grid_access.sh applies, in the plain text it reads: the approved list (the
+  // AccessIDs of allowlist) and the readers of lab storage. admin.mjs roster and readers print these bodies as
+  // they come, so what the grid reads is written here, once (ACCESS_CHECK.md, "The lists the grid reads").
+  if (request.method === 'GET' && route === 'roster.txt') return textList(200, await approvedIds(env), cors);
+  if (request.method === 'GET' && route === 'readers.txt') return textList(200, readerLines(await records(env, 'storage')), cors);
   if (request.method !== 'POST') return reply(404, { error: 'not found' });
   const r = await readJson(request);
   if (r.error) return reply(r.status, { error: r.error });

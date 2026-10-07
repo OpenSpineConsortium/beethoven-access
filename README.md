@@ -27,7 +27,7 @@ address. The same code runs under two Worker names, `beethoven-access` and `ashl
 | `POST /access_check` | Beethoven (`access_check` in `https://openspineconsortium.com/beethoven/services.json`; 4.0.0 to 6.0.0 read `/ashley/services.json`) | is this one account approved, on this installation? Yes or no, from the same list; contract in [ACCESS_CHECK.md](ACCESS_CHECK.md) |
 | `GET /revoked` | every installation, daily | the signed revocation list |
 | `POST /report` | installations that allow error reports | an issue labelled `diagnostic-report`; repeats add a count |
-| `/admin/*` | `https://openspineconsortium.com/beethoven/admin.html`, `admin.mjs`, the VS Code edition's `publish.sh` (`revoke-lid`) | `list`, `approve` (optional `grants`), `deny`, `add` (optional `grants`), `remove`, `invited`, `grant`, `seat`, `reset-seat`, `seat-rule`, `cv`, `revoke-lid`, `notify-test`, and for lab storage `storage-list`, `storage-approve`, `storage-deny`, `storage-add`, `storage-remove`, behind the bearer token `ADMIN_TOKEN`. The admin page's contract (every field of `list` and `storage-list`, every write) is in [ACCESS_CHECK.md, "The admin routes"](ACCESS_CHECK.md#the-admin-routes-the-admin-pages-contract) |
+| `/admin/*` | `https://openspineconsortium.com/beethoven/admin.html`, `admin.mjs`, the VS Code edition's `publish.sh` (`revoke-lid`) | `list`, `approve` (optional `grants`), `deny`, `add` (optional `grants`), `remove`, `invited`, `grant`, `seat`, `reset-seat`, `seat-rule`, `cv`, `revoke-lid`, `notify-test`, and for lab storage `storage-list`, `storage-approve`, `storage-deny`, `storage-add`, `storage-remove`, and the two lists the grid reads as plain text, `roster.txt` and `readers.txt`, behind the bearer token `ADMIN_TOKEN`. The admin page's contract (every field of `list` and `storage-list`, every write) is in [ACCESS_CHECK.md, "The admin routes"](ACCESS_CHECK.md#the-admin-routes-the-admin-pages-contract) |
 | cron, `0 13 * * *` | Cloudflare, once a day | the invitation reminder: one e-mail listing the approvals for Beethoven not marked invited to the Google Group Beethoven-users after an hour ([The private listing](#the-private-listing)) |
 | `GET /health` | you | `{"ok":true}` |
 
@@ -537,14 +537,17 @@ The e-mail and the decision pages say "all of the lab storage (`/rs/rs_grp_oscho
 and say what it gives: everything there the group may read and the volume's owner owns. The grid can add
 read only on what the owner owns, so a folder another person owns stays as they set it.
 
-Nothing here reaches the grid. `node tools/intake/admin.mjs readers` prints the readers, one `<AccessID>
-<folder>` a line (`<AccessID> .` for the whole volume), and `tools/grid_access.sh` in the `hpcworker` repository reads it on each run, beside
-`admin.mjs roster` (the approved list): each reader gets `--x` on the root and the lab group's read on their
-folders by named ACL entries, never write and never a default entry, and a reader taken off loses them at
-the next run. What a reader gets and never gets is that tool's header and `docs/guides/LAB_LEAD.md`
-section 9 there. A service deployed before this answers `storage-list` with 404, and `admin.mjs readers`
-then ends with exit 1 and says to deploy, so the grid tool refuses rather than taking a reader's entries
-away: deploy the service (both names) before the grid tool that reads the readers.
+Nothing here reaches the grid. `node admin.mjs readers` prints the readers, one `<AccessID> <folder>` a
+line (`<AccessID> .` for the whole volume), as `GET /admin/readers.txt` gives them, and
+`tools/grid_access.sh` in the `hpcworker` repository reads it on each run, beside `admin.mjs roster` (the
+approved list, `GET /admin/roster.txt`): each reader gets `--x` on the root and the lab group's read on
+their folders by named ACL entries, never write and never a default entry, and a reader taken off loses
+them at the next run. What a reader gets and never gets is that tool's header and
+`docs/guides/LAB_LEAD.md` section 9 there. A service deployed before the two text routes answers them
+404, and `admin.mjs` then ends with exit 1 and says to deploy, with nothing on stdout, so the grid tool
+refuses rather than taking anyone's entries away: deploy the service (both names) before the grid tool
+that reads them. The two routes and their grammar are in [ACCESS_CHECK.md, "The lists the grid
+reads"](ACCESS_CHECK.md#the-lists-the-grid-reads).
 
 ## Publishing your own revocation list
 
@@ -658,8 +661,10 @@ unaffected on every one of those routes; and the public `GET /allowlist` naming 
 storage: the request's fields and folders (never a part that starts with a dot or a dash, never a folder
 outside the root), its own limit per connection, the maintainer's e-mail and its two
 links (refused at `/decide`, as `/decide`'s are refused at `/storage_decide`), approve and deny once,
-versions replaced, the admin routes, and `admin.mjs readers` and `roster` run against the Worker behind a
-local server (and failing, with exit 1, against a service that has no storage list); and the whole volume:
+versions replaced, the admin routes, `GET /admin/roster.txt` and `/admin/readers.txt` (their bodies,
+the token, the origin), and `admin.mjs readers` and `roster` run against the Worker behind a local server,
+printing those bodies byte for byte (and failing, with exit 1 and nothing on stdout, against a service
+without the text routes, a sign-in page in front of it and a wrong token); and the whole volume:
 `.` and the root, either way written, as the one folder, in a request, an approval, the union with folders
 already read, `storage-add` and `storage-remove`, said in words in the e-mail and on the pages, and printed
 `<AccessID> .` by `readers`. `test/vendor.test.mjs` checks the order in which the vendor folder is found, and

@@ -261,6 +261,50 @@ test('D5: GET /allowlist publishes no AccessID; the approved list is the maintai
   assert.equal((await call(env, 'GET', '/admin/allowlist', { headers: ADMIN, origin: 'https://evil.example' }).then(asJson)).status, 403);
 });
 
+// The two lists hpcworker's tools/grid_access.sh applies, as plain text behind the admin token: one AccessID a
+// line (the same AccessIDs as /admin/allowlist), and one "<AccessID> <folder>" a line for the readers.
+test('GET /admin/roster.txt and /admin/readers.txt: the lists the grid reads, as plain text, for the maintainer only', async () => {
+  const env = mailEnv();
+  const get = (route, opts = {}) => call(env, 'GET', `/admin/${route}`, { headers: ADMIN, ...opts });
+  for (const route of ['roster.txt', 'readers.txt']) {
+    const r = await get(route);
+    assert.equal(r.status, 200, route);
+    assert.equal(r.headers.get('content-type'), 'text/plain; charset=utf-8');
+    assert.equal(r.headers.get('cache-control'), 'no-store');
+    assert.equal(r.headers.get('access-control-allow-origin'), SITE);
+    assert.equal(await r.text(), '', `${route}: nobody yet, an empty body`);
+    // the token, as every admin route: none, a wrong one, none configured; and no page of another site
+    for (const res of [
+      await call(env, 'GET', `/admin/${route}`),
+      await call(env, 'GET', `/admin/${route}`, { headers: { authorization: 'Bearer wrong' } }),
+      await call(env, 'GET', `/admin/${route}`, { headers: { authorization: 'Bearer secret-admin-token-longer' } }),
+      await call(mailEnv({ ADMIN_TOKEN: undefined }), 'GET', `/admin/${route}`, { headers: ADMIN }),
+    ]) {
+      assert.equal(res.status, 401, route);
+      assert.deepEqual(await res.json(), { error: 'admin token missing or wrong' });
+    }
+    assert.equal((await get(route, { origin: 'https://evil.example' })).status, 403);
+    // read only: a POST there is an unknown write
+    assert.equal((await adminPost(env, route, { accessId: 'ab1234' })).status, 404);
+  }
+  await adminPost(env, 'add', { accessId: 'zz9999', name: 'Z. Last' });
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  // lab only, and the store reviewers' mock account: neither is on the grid's approved list, as at /admin/allowlist
+  await adminPost(env, 'add', { accessId: 'ef9012', name: 'E. F.', grants: ['lab'] });
+  await adminPost(env, 'add', { accessId: 'st1234', name: 'Store reviewers' });
+  await adminPost(env, 'seat-rule', { accessId: 'st1234', any: true });
+  await adminPost(env, 'storage-add', { accessId: 'rd5678', folders: ['shared/access', 'lab'] });
+  await adminPost(env, 'storage-add', { accessId: 'cd5678', folders: ['/rs/rs_grp_oschome/shared/data'] });
+  await adminPost(env, 'storage-add', { accessId: 'zq0006', folders: ['.'] });
+  const roster = await (await get('roster.txt')).text();
+  assert.equal(roster, 'ab1234\nzz9999\n');
+  assert.deepEqual(roster.trimEnd().split('\n'), (await approvedList(env)).body.accessIds);
+  assert.equal(await (await get('readers.txt')).text(), 'cd5678 shared/data\nrd5678 lab\nrd5678 shared/access\nzq0006 .\n');
+  // a reader taken off is off the list at once
+  await adminPost(env, 'storage-remove', { accessId: 'rd5678' });
+  assert.equal(await (await get('readers.txt')).text(), 'cd5678 shared/data\nzq0006 .\n');
+});
+
 test('POST /request validates, stores a pending record and files one issue', async () => {
   const env = makeEnv();
   issues.length = 0;
@@ -3216,19 +3260,27 @@ test('a reader of some folders asks for the whole volume: the union is "." alone
 // admin.mjs readers is what hpcworker's tools/grid_access.sh reads: "<AccessID> <folder>" a line, and a
 // non-zero exit (never an empty list) when the service cannot answer. Run here against the Worker behind a
 // local HTTP server, with a vendor folder of its own holding only the admin token.
-test('admin.mjs readers and roster print what grid_access.sh reads; an older service fails them plainly', async () => {
+test('admin.mjs readers and roster print what grid_access.sh reads; an older service or a page in front fails them plainly', async () => {
   const env = mailEnv();
   await adminPost(env, 'storage-add', { accessId: 'rd5678', folders: ['shared/access', 'lab'] });
   await adminPost(env, 'storage-add', { accessId: 'cd5678', folders: ['shared/data'] });
   await adminPost(env, 'storage-add', { accessId: 'zq0006', folders: ['/rs/rs_grp_oschome/'] });
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  // older: a service deployed before the text routes, which answers them as any unknown GET; page: a sign-in
+  // page in front of the service, which answers 200 with HTML
   let older = false;
+  let page = false;
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);
-    if (older && req.url.startsWith('/admin/storage-')) {
+    if (older && /^\/admin\/(roster|readers)\.txt/.test(req.url)) {
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end('{"error":"not found"}');
+      return;
+    }
+    if (page) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end('<!doctype html><title>Sign in</title>ab1234');
       return;
     }
     const answer = await worker.fetch(new Request(`http://127.0.0.1${req.url}`, { method: req.method, headers: req.headers, body: chunks.length ? Buffer.concat(chunks) : undefined }), env);
@@ -3252,11 +3304,33 @@ test('admin.mjs readers and roster print what grid_access.sh reads; an older ser
     assert.match(r.stdout, /^readers \(3\):$/m);
     assert.match(r.stdout, /^ {2}rd5678 {2}reads lab, shared\/access {2}\(since /m);
     assert.ok(!r.stderr.includes('secret-admin-token') && !r.stdout.includes('secret-admin-token'), 'the token is never printed');
+    // what admin.mjs prints is the service's body, byte for byte
+    const body = async (route) => (await call(env, 'GET', `/admin/${route}`, { headers: ADMIN })).text();
+    assert.equal((await run('readers')).stdout, await body('readers.txt'));
+    assert.equal((await run('roster')).stdout, await body('roster.txt'));
     older = true;
-    r = await run('readers');
-    assert.equal(r.code, 1);
-    assert.equal(r.stdout, '');
-    assert.match(r.stderr, /the access service has no lab storage list yet: deploy the service/);
+    for (const [cmd, what] of [['readers', 'the readers list'], ['roster', 'the approved list as text']]) {
+      r = await run(cmd);
+      assert.deepEqual([r.code, r.stdout], [1, ''], cmd);
+      assert.ok(r.stderr.includes(`the access service does not give ${what} yet: deploy the service`), r.stderr);
+    }
+    // the storage list itself is still there on that service
+    assert.equal((await run('storage-list')).code, 0);
+    older = false;
+    page = true;
+    for (const cmd of ['readers', 'roster']) {
+      r = await run(cmd);
+      assert.deepEqual([r.code, r.stdout], [1, ''], cmd);
+      assert.match(r.stderr, /answered text\/html; charset=utf-8 instead of the .*; nothing printed/);
+    }
+    page = false;
+    // a wrong token: the service's 401, and still nothing on stdout
+    fs.writeFileSync(path.join(vendor, 'admin_token'), 'not-the-token\n');
+    for (const cmd of ['readers', 'roster']) {
+      r = await run(cmd);
+      assert.deepEqual([r.code, r.stdout], [1, ''], cmd);
+      assert.match(r.stderr, /HTTP 401/);
+    }
   } finally {
     server.close();
     fs.rmSync(vendor, { recursive: true, force: true });

@@ -3,10 +3,10 @@
 // group oschome for it, which is C&IT's to change. They ask here instead, for named folders under the lab's
 // storage (STORAGE_ROOT, /rs/rs_grp_oschome unless set); the maintainer approves (the folders asked for, or
 // fewer), denies, adds a reader, changes a reader's folders or takes a reader off, from the e-mail's links
-// or the admin page's section "Lab storage, read only"; and `admin.mjs readers` prints the approved pairs,
-// "<AccessID> <folder>" a line, which hpcworker's tools/grid_access.sh turns into the group's read on those
-// folders by named ACL entries (its header, and docs/guides/LAB_LEAD.md section 9 there, say what a reader
-// gets and never gets). The whole volume is one folder, spelled "." (2026-10-07: the maintainer gave a lab member
+// or the admin page's section "Lab storage, read only"; and GET /admin/readers.txt (what `admin.mjs readers`
+// prints) gives the approved pairs, "<AccessID> <folder>" a line, which hpcworker's tools/grid_access.sh
+// turns into the group's read on those folders by named ACL entries (its header, and
+// docs/guides/LAB_LEAD.md section 9 there, say what a reader gets and never gets). The whole volume is one folder, spelled "." (2026-10-07: the maintainer gave a lab member
 // the group's read on all of it): a form may name it as "." or as the root itself, it is stored and printed as
 // ".", and it is a reader's only folder, since it covers every other. What a person reads says it in words.
 // Nothing here reaches the grid or C&IT, and the person asking is not e-mailed.
@@ -19,6 +19,7 @@
 //   GET|POST /storage_decide those two links: GET only asks, the page's one button POSTs the decision, which
 //                            goes through the same code as the admin routes.
 //   /admin/storage-*         storage-list (GET); storage-approve, storage-deny, storage-add, storage-remove.
+//   GET /admin/readers.txt   the readers as plain text (worker.js answers it, with readerLines below).
 // Records (KV ACCESS): storage_pending:<AccessID>, storage:<AccessID> (a reader and their folders) and
 // storage_denied:<AccessID>; the audit lines are worker.js's, with the actions storage-*. worker.js hands
 // this module its helpers (storageService(kit)), so the two answer, check links and write records alike.
@@ -38,6 +39,9 @@ const VERSIONS_PER_DAY = 3;
 export const storageRoot = (env) => String(env.STORAGE_ROOT || DEFAULT_ROOT).replace(/\/+$/, '');
 // a folder is read by a reader of itself or of any folder above it: the grid gives read on a folder's whole tree
 export const covered = (folders, f) => folders.some((a) => a === WHOLE || f === a || f.startsWith(`${a}/`));
+// the readers as tools/grid_access.sh reads them, "<AccessID> <folder>" a line: the records come sorted by
+// AccessID and each one's folders sorted, so the order is the grid tool's whatever order the writes came in
+export const readerLines = (readers) => readers.flatMap((r) => (r.folders || []).map((f) => `${r.accessId} ${f}`));
 const list = (folders) => folders.join(', ');
 // two lists of folders as one, sorted, without repeats; with the whole volume in it, that alone
 export const union = (...lists) => {
