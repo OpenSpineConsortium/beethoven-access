@@ -1,0 +1,6 @@
+{
+ "vector": "key",
+ "summary": "The public key of the key id \"vectors\", which signed the keys and lists in these vectors and nothing else: the raw 32 bytes of the Ed25519 key, base64, as a verifier lists its keys. It is public by construction; a verifier never trusts it outside its tests.",
+ "kid": "vectors",
+ "public_key": "a/LeC1dNFK1KmXO9RHczwY6uEfl0lf55voV4NZovDZ8="
+}

@@ -1,0 +1,32 @@
+{
+ "vector": "access-check-malformed",
+ "route": "/access_check",
+ "summary": "A body the service does not take: 400 with a sentence",
+ "request": {
+  "method": "POST",
+  "path": "/access_check",
+  "headers": {
+   "origin": "chrome-extension://abcdefghijklmnopabcdefghijklmnop",
+   "content-type": "text/plain;charset=UTF-8"
+  },
+  "body": {
+   "v": 2,
+   "access_id": "ab1234",
+   "portal": "ondemand.grid.wayne.edu",
+   "product": "bridge",
+   "version": "15.0.0",
+   "install_id": "0123456789abcdef0123456789abcdef"
+  }
+ },
+ "answer": {
+  "status": 400,
+  "headers": {
+   "access-control-allow-origin": "*",
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "error": "v must be 1"
+  }
+ }
+}

@@ -1,0 +1,26 @@
+{
+ "format": 1,
+ "name": "beethoven-access",
+ "repository": "OpenSpineConsortium/beethoven-access",
+ "summary": "Beethoven's access service, a Cloudflare Worker: the approved list and the access check, trial keys and the revocation list for Beethoven for VS Code, the request and lab storage pages' forms, the admin routes, and the two lists the grid applies.",
+ "standard": "https://github.com/OpenSpineConsortium/beethoven/blob/main/INTERFACES.md",
+ "exports": [
+  {
+   "id": "http-api",
+   "kind": "contract",
+   "version": 1,
+   "summary": "The service's HTTP routes (routes.json: who calls each, how it is authorised, each request's and answer's schema by status), the JSON Schemas, the plain-text answers' grammar (lines.json: the roster and readers lists, the signed revocation list and trial key), the public key of each key id the deployed service signs with (signing-keys.json), and vectors the real Worker answered, with the public key that signed them",
+   "paths": ["interface/contract/"],
+   "consumers": ["OpenSpineConsortium/beethoven-extension", "OpenSpineConsortium/beethoven-vscode", "OpenSpineConsortium/hpcworker", "OpenSpineConsortium/openspineconsortium.github.io"]
+  },
+  {
+   "id": "http-api-text",
+   "kind": "text",
+   "version": 1,
+   "summary": "The same contract written for people: ACCESS_CHECK.md (the access check, the admin routes and the lists the grid reads) and README.md's Routes and request portal sections",
+   "paths": ["ACCESS_CHECK.md", "README.md"],
+   "consumers": ["OpenSpineConsortium/beethoven-extension", "OpenSpineConsortium/beethoven-vscode", "OpenSpineConsortium/hpcworker"]
+  }
+ ],
+ "imports": []
+}

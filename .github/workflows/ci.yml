@@ -1,0 +1,38 @@
+# The tests, on every pull request and every push to main: node --test over test/, with Node's own runner and
+# nothing installed, and a syntax check of the two shell scripts. No secret reaches this workflow and it
+# deploys nothing; deploy.yml runs the same tests again before it deploys.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# a newer push to a pull request replaces its older run; a run on main is never cancelled
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      # README.md's test line: the tests make their own signing key and load only this checkout's files
+      - run: node --test test/*.test.mjs
+      - run: |
+          for f in deploy.sh register_subdomain.sh; do bash -n "$f"; done

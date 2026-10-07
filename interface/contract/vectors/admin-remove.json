@@ -1,0 +1,37 @@
+{
+ "vector": "admin-remove",
+ "route": "/admin/remove",
+ "summary": "Remove a person: their keys go on the revocation list",
+ "request": {
+  "method": "POST",
+  "path": "/admin/remove",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "authorization": "Bearer <ADMIN_TOKEN>",
+   "content-type": "application/json"
+  },
+  "body": {
+   "accessId": "ab1234"
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "status": "removed",
+   "accessId": "ab1234",
+   "revoked": [
+    "L-DOvbMrJ996hq"
+   ]
+  }
+ }
+}

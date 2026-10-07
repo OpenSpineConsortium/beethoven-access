@@ -1,0 +1,15 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/health.answer.schema.json",
+ "title": "GET /health: the answer",
+ "description": "The service is up. deploy.yml reads it after each deploy.",
+ "type": "object",
+ "required": [
+  "ok"
+ ],
+ "properties": {
+  "ok": {
+   "const": true
+  }
+ }
+}

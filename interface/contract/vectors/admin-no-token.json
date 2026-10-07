@@ -1,0 +1,26 @@
+{
+ "vector": "admin-no-token",
+ "route": "/admin/roster.txt",
+ "summary": "An admin route without the token: 401",
+ "request": {
+  "method": "GET",
+  "path": "/admin/roster.txt",
+  "headers": {}
+ },
+ "answer": {
+  "status": 401,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "error": "admin token missing or wrong"
+  }
+ }
+}

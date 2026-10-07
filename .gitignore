@@ -1,0 +1,3 @@
+# wrangler's own cache (the account it last used) and anything npm or npx leaves; neither belongs in the record
+.wrangler/
+node_modules/

@@ -1,0 +1,23 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/allowlist.answer.schema.json",
+ "title": "GET /allowlist: the answer",
+ "description": "The public list names nobody since 2026-10-01; the route keeps its shape for a VS Code build that still has the address (README.md, Routes). Open CORS, cached one minute.",
+ "type": "object",
+ "required": [
+  "about",
+  "accessIds"
+ ],
+ "properties": {
+  "about": {
+   "type": "string"
+  },
+  "accessIds": {
+   "type": "array",
+   "items": {
+    "not": {}
+   },
+   "description": "always empty"
+  }
+ }
+}

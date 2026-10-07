@@ -1,0 +1,39 @@
+{
+ "vector": "request-pending",
+ "route": "/request",
+ "summary": "The request page, with MAIL_STUDENTS \"1\": stored, and the confirmation e-mail sent",
+ "request": {
+  "method": "POST",
+  "path": "/request",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "content-type": "application/json"
+  },
+  "body": {
+   "v": 2,
+   "access_id": "cd5678",
+   "name": "C. D.",
+   "email": "cd5678@wayne.edu",
+   "google_account": "c.d.student@gmail.com",
+   "purpose": "spine segmentation for my thesis",
+   "product": "bridge"
+  }
+ },
+ "answer": {
+  "status": 202,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "status": "pending",
+   "mailbox": "confirm"
+  }
+ }
+}

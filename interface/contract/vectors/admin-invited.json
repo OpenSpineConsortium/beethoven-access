@@ -1,0 +1,35 @@
+{
+ "vector": "admin-invited",
+ "route": "/admin/invited",
+ "summary": "Mark invited to the Google Group",
+ "request": {
+  "method": "POST",
+  "path": "/admin/invited",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "authorization": "Bearer <ADMIN_TOKEN>",
+   "content-type": "application/json"
+  },
+  "body": {
+   "accessId": "ab1234"
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "status": "invited",
+   "accessId": "ab1234",
+   "invited_at": "2026-10-07T12:00:00.000Z"
+  }
+ }
+}

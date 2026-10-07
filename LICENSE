@@ -1,0 +1,9 @@
+Copyright (c) 2026 OpenSpineConsortium. All rights reserved.
+
+beethoven-access, the access service of Beethoven and Beethoven for VS Code, is proprietary software of
+Gregory Schwing, trading as OpenSpineConsortium. This notice covers everything in this repository: the
+Worker (worker.js, storage.js, wrangler.toml), the maintainer's tools (admin.mjs, deploy.sh,
+trial-key.mjs, register_subdomain.sh, service.mjs, vendor.mjs), the published interface (interface/),
+the tests, the workflows and the documentation. It bundles no third-party package.
+
+No licence is granted by access to this repository.

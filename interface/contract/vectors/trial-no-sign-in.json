@@ -1,0 +1,25 @@
+{
+ "vector": "trial-no-sign-in",
+ "route": "/trial",
+ "summary": "No Microsoft sign-in token: 401",
+ "request": {
+  "method": "POST",
+  "path": "/trial",
+  "headers": {
+   "content-type": "application/json"
+  },
+  "body": {
+   "product": "ashley"
+  }
+ },
+ "answer": {
+  "status": 401,
+  "headers": {
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "error": "sign in with your institutional account first"
+  }
+ }
+}

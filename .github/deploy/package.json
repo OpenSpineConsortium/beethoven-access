@@ -1,0 +1,8 @@
+{
+  "name": "beethoven-access-deploy",
+  "private": true,
+  "description": "The deploy workflow's one tool: wrangler at an exact version, with package-lock.json fixing by hash everything it pulls in. The Worker itself has no dependency.",
+  "dependencies": {
+    "wrangler": "4.148.0"
+  }
+}

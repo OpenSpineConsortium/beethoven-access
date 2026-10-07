@@ -1,0 +1,105 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/request.request.schema.json",
+ "title": "POST /request: the request",
+ "description": "The request page's form, JSON, 7 MiB + 16 KiB at most (README.md, The request portal). The older form's body (accessId, name, email, note, product; no v) is still taken, for a page cached before 2026-09-30. The service trims and lower-cases access_id, email and google_account before it checks them; email must be exactly <access_id>@wayne.edu.",
+ "anyOf": [
+  {
+   "$ref": "#/$defs/form"
+  },
+  {
+   "$ref": "#/$defs/older"
+  }
+ ],
+ "$defs": {
+  "form": {
+   "type": "object",
+   "required": [
+    "v",
+    "access_id",
+    "name",
+    "email",
+    "google_account",
+    "purpose"
+   ],
+   "properties": {
+    "v": {
+     "const": 2
+    },
+    "access_id": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "name": {
+     "type": "string",
+     "pattern": "^.{2,80}$"
+    },
+    "email": {
+     "type": "string",
+     "pattern": "^[a-z]{2}[0-9]{4}@wayne\\.edu$"
+    },
+    "google_account": {
+     "type": "string",
+     "pattern": "^[^\\s@<>\"',;:()\\[\\]\\\\]{1,64}@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\.[a-z]{2,24}$",
+     "description": "the address the person signs in to Chrome with, 120 characters at most"
+    },
+    "purpose": {
+     "type": "string",
+     "pattern": "^[\\s\\S]{2,500}$"
+    },
+    "cv": {
+     "type": "object",
+     "required": [
+      "base64"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "type": {
+       "type": "string",
+       "description": "ignored: the kind is read from the file's first bytes (PDF, Word .docx or .doc)"
+      },
+      "base64": {
+       "type": "string",
+       "description": "the file, 5 MB at most once decoded; a data:...;base64, prefix is allowed"
+      }
+     }
+    },
+    "product": {
+     "type": "string",
+     "description": "bridge from Beethoven's page; shown in the e-mail only"
+    }
+   }
+  },
+  "older": {
+   "type": "object",
+   "required": [
+    "accessId",
+    "name",
+    "email"
+   ],
+   "properties": {
+    "v": {
+     "const": 1
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "name": {
+     "type": "string",
+     "pattern": "^.{2,80}$"
+    },
+    "email": {
+     "type": "string",
+     "pattern": "^[a-z]{2}[0-9]{4}@wayne\\.edu$"
+    },
+    "note": {
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    }
+   }
+  }
+ }
+}

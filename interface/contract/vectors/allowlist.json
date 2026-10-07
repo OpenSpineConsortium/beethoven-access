@@ -1,0 +1,22 @@
+{
+ "vector": "allowlist",
+ "route": "/allowlist",
+ "summary": "The old public list names nobody, with one person approved",
+ "request": {
+  "method": "GET",
+  "path": "/allowlist",
+  "headers": {}
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-origin": "*",
+   "cache-control": "max-age=60",
+   "content-type": "application/json"
+  },
+  "body": {
+   "about": "The list of approved AccessIDs is not published; the access service answers about one account at a time",
+   "accessIds": []
+  }
+ }
+}

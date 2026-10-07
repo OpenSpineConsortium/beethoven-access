@@ -1,0 +1,49 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/storage-request.request.schema.json",
+ "title": "POST /storage_request: the request",
+ "description": "The lab storage page's form, JSON, 8 KiB at most. A folder may be written with the root in front (then it must be inside the root), or as \".\" or the root itself for the whole volume; folders may also be one text with a folder a line. The service trims and lower-cases access_id and email; email must be exactly <access_id>@wayne.edu.",
+ "type": "object",
+ "required": [
+  "v",
+  "access_id",
+  "name",
+  "email",
+  "folders",
+  "purpose"
+ ],
+ "properties": {
+  "v": {
+   "const": 1
+  },
+  "access_id": {
+   "$ref": "common.schema.json#/$defs/access_id"
+  },
+  "name": {
+   "type": "string",
+   "pattern": "^.{2,80}$"
+  },
+  "email": {
+   "type": "string",
+   "pattern": "^[a-z]{2}[0-9]{4}@wayne\\.edu$"
+  },
+  "folders": {
+   "anyOf": [
+    {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    {
+     "type": "string"
+    }
+   ],
+   "description": "one to eight folders under the root"
+  },
+  "purpose": {
+   "type": "string",
+   "pattern": "^[\\s\\S]{2,500}$"
+  }
+ }
+}

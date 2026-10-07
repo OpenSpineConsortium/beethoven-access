@@ -1,0 +1,28 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/trial.answer.schema.json",
+ "title": "POST /trial: the answer (200)",
+ "description": "A signed trial key for the person the sign-in names, approved for Beethoven; three a day at most. The key's payload is trial-key.payload.schema.json.",
+ "type": "object",
+ "required": [
+  "key",
+  "detail"
+ ],
+ "properties": {
+  "key": {
+   "allOf": [
+    {
+     "$ref": "common.schema.json#/$defs/signed_token"
+    },
+    {
+     "type": "string",
+     "pattern": "^(ASHLEY1|BEETHOVEN1)\\."
+    }
+   ]
+  },
+  "detail": {
+   "type": "string",
+   "description": "a sentence for the person: the licence id, the AccessID and the end date"
+  }
+ }
+}

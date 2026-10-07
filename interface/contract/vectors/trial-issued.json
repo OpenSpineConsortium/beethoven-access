@@ -1,0 +1,27 @@
+{
+ "vector": "trial-issued",
+ "route": "/trial",
+ "summary": "An approved person signed in with Microsoft: a signed trial key",
+ "request": {
+  "method": "POST",
+  "path": "/trial",
+  "headers": {
+   "authorization": "Bearer <a Microsoft sign-in token of ab1234@wayne.edu>",
+   "content-type": "application/json"
+  },
+  "body": {
+   "product": "ashley"
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "key": "ASHLEY1.eyJ2IjoxLCJraWQiOiJ2ZWN0b3JzIiwibGlkIjoiTC1FTERLdUhQUFFyLWEiLCJwcm9kdWN0IjoiYXNobGV5IiwiZWRpdGlvbiI6InRyaWFsIiwic3ViIjoiYWIxMjM0IiwiZW1haWwiOiJhYjEyMzRAd2F5bmUuZWR1IiwibmFtZSI6IkEuIFN0dWRlbnQiLCJpYXQiOjE3OTEzNzQ0MDAsIm5iZiI6MTc5MTM3NDQwMCwiZXhwIjoxODIyOTEwNDAwLCJncmFjZV9kYXlzIjozfQ.z0we9zvRmRFWHhKCQCAmDkTLdAQIp2ygo6XI4J6idVDUEHrXRvMMTQA_EA41XbnkGDBkBkrrzQxCnv1otOJ4AQ",
+   "detail": "trial license L-ELDKuHPPQr-a for ab1234, until 2027-10-07"
+  }
+ }
+}

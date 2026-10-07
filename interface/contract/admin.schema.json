@@ -1,0 +1,1592 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/admin.schema.json",
+ "title": "The admin routes: requests and answers",
+ "description": "The admin page's contract (ACCESS_CHECK.md, \"The admin routes\"), one definition per request (<route>.request) and per answer (<route>.answer). Each needs the admin token; refusals are error.schema.json. A reader ignores a field it does not know: a new optional field keeps the export's version.",
+ "$defs": {
+  "list.answer": {
+   "type": "object",
+   "required": [
+    "now",
+    "group",
+    "pending",
+    "approved",
+    "denied",
+    "revoked",
+    "checks",
+    "seats",
+    "conflicts"
+   ],
+   "properties": {
+    "now": {
+     "$ref": "common.schema.json#/$defs/time"
+    },
+    "group": {
+     "type": "object",
+     "required": [
+      "name",
+      "members_url",
+      "mode"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "members_url": {
+       "type": "string"
+      },
+      "mode": {
+       "enum": [
+        "manual",
+        "workspace"
+       ]
+      },
+      "address": {
+       "type": "string"
+      }
+     }
+    },
+    "pending": {
+     "type": "array",
+     "items": {
+      "allOf": [
+       {
+        "type": "object",
+        "required": [
+         "accessId"
+        ],
+        "properties": {
+         "accessId": {
+          "$ref": "common.schema.json#/$defs/access_id"
+         }
+        }
+       },
+       {
+        "type": "object",
+        "required": [
+         "stage",
+         "age_hours"
+        ],
+        "properties": {
+         "stage": {
+          "enum": [
+           "unconfirmed",
+           "submitted"
+          ]
+         },
+         "age_hours": {
+          "anyOf": [
+           {
+            "type": "integer",
+            "minimum": 0
+           },
+           {
+            "type": "null"
+           }
+          ]
+         },
+         "mailbox": {
+          "enum": [
+           "not_verified",
+           "waiting",
+           "confirmed"
+          ]
+         }
+        }
+       }
+      ]
+     }
+    },
+    "approved": {
+     "type": "array",
+     "items": {
+      "allOf": [
+       {
+        "type": "object",
+        "required": [
+         "accessId"
+        ],
+        "properties": {
+         "accessId": {
+          "$ref": "common.schema.json#/$defs/access_id"
+         }
+        }
+       },
+       {
+        "type": "object",
+        "description": "an approval as stored: name, email, note, approved_at, by, lids, grants, and the lifecycle fields of ACCESS_CHECK.md's table",
+        "required": [
+         "name",
+         "email",
+         "approved_at",
+         "lids"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "email": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "approved_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "by": {
+          "type": "string"
+         },
+         "lids": {
+          "type": "array",
+          "items": {
+           "$ref": "common.schema.json#/$defs/lid"
+          }
+         },
+         "grants": {
+          "$ref": "common.schema.json#/$defs/grants"
+         },
+         "decided_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "decision": {
+          "enum": [
+           "approve",
+           "lab"
+          ]
+         },
+         "google_account": {
+          "type": "string"
+         },
+         "invited_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "any_installation": {
+          "const": true
+         }
+        }
+       },
+       {
+        "type": "object",
+        "required": [
+         "grants",
+         "stage",
+         "seat",
+         "conflicts"
+        ],
+        "properties": {
+         "stage": {
+          "type": "string"
+         },
+         "installed_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "seat": {
+          "anyOf": [
+           {
+            "type": "object",
+            "required": [
+             "bound",
+             "first_seen",
+             "last_seen"
+            ],
+            "properties": {
+             "bound": {
+              "const": true
+             }
+            }
+           },
+           {
+            "type": "object",
+            "required": [
+             "bound"
+            ],
+            "properties": {
+             "bound": {
+              "const": false
+             }
+            }
+           }
+          ]
+         },
+         "conflicts": {
+          "type": "integer",
+          "minimum": 0
+         }
+        }
+       }
+      ]
+     }
+    },
+    "denied": {
+     "type": "array",
+     "items": {
+      "allOf": [
+       {
+        "type": "object",
+        "required": [
+         "accessId"
+        ],
+        "properties": {
+         "accessId": {
+          "$ref": "common.schema.json#/$defs/access_id"
+         }
+        }
+       },
+       {
+        "type": "object",
+        "required": [
+         "denied_at",
+         "decision"
+        ],
+        "properties": {
+         "decision": {
+          "const": "deny"
+         },
+         "reason": {
+          "type": "string"
+         }
+        }
+       }
+      ]
+     }
+    },
+    "revoked": {
+     "type": "array",
+     "items": {
+      "$ref": "common.schema.json#/$defs/lid"
+     }
+    },
+    "checks": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "access_id",
+       "product",
+       "approved"
+      ]
+     }
+    },
+    "seats": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "accessId"
+      ],
+      "properties": {
+       "accessId": {
+        "$ref": "common.schema.json#/$defs/access_id"
+       }
+      }
+     }
+    },
+    "conflicts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "accessId"
+      ],
+      "properties": {
+       "accessId": {
+        "$ref": "common.schema.json#/$defs/access_id"
+       }
+      }
+     }
+    }
+   }
+  },
+  "allowlist.answer": {
+   "type": "object",
+   "required": [
+    "about",
+    "accessIds"
+   ],
+   "properties": {
+    "about": {
+     "type": "string"
+    },
+    "accessIds": {
+     "type": "array",
+     "items": {
+      "$ref": "common.schema.json#/$defs/access_id"
+     }
+    }
+   }
+  },
+  "storage-list.answer": {
+   "type": "object",
+   "required": [
+    "now",
+    "root",
+    "pending",
+    "readers",
+    "denied"
+   ],
+   "properties": {
+    "now": {
+     "$ref": "common.schema.json#/$defs/time"
+    },
+    "root": {
+     "type": "string",
+     "pattern": "^/"
+    },
+    "pending": {
+     "type": "array",
+     "items": {
+      "allOf": [
+       {
+        "type": "object",
+        "required": [
+         "accessId"
+        ],
+        "properties": {
+         "accessId": {
+          "$ref": "common.schema.json#/$defs/access_id"
+         }
+        }
+       },
+       {
+        "type": "object",
+        "required": [
+         "name",
+         "email",
+         "folders"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "email": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "folders": {
+          "$ref": "common.schema.json#/$defs/folders"
+         },
+         "approved_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "decided_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "decision": {
+          "enum": [
+           "approve",
+           "add",
+           "deny"
+          ]
+         },
+         "by": {
+          "type": "string"
+         },
+         "requested_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "submitted_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "denied_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "reason": {
+          "type": "string"
+         },
+         "mailbox": {
+          "type": "string"
+         },
+         "ref": {
+          "type": "string"
+         },
+         "age_hours": {
+          "anyOf": [
+           {
+            "type": "integer",
+            "minimum": 0
+           },
+           {
+            "type": "null"
+           }
+          ]
+         }
+        }
+       }
+      ]
+     }
+    },
+    "readers": {
+     "type": "array",
+     "items": {
+      "allOf": [
+       {
+        "type": "object",
+        "required": [
+         "accessId"
+        ],
+        "properties": {
+         "accessId": {
+          "$ref": "common.schema.json#/$defs/access_id"
+         }
+        }
+       },
+       {
+        "type": "object",
+        "required": [
+         "name",
+         "email",
+         "folders"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "email": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "folders": {
+          "$ref": "common.schema.json#/$defs/folders"
+         },
+         "approved_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "decided_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "decision": {
+          "enum": [
+           "approve",
+           "add",
+           "deny"
+          ]
+         },
+         "by": {
+          "type": "string"
+         },
+         "requested_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "submitted_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "denied_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "reason": {
+          "type": "string"
+         },
+         "mailbox": {
+          "type": "string"
+         },
+         "ref": {
+          "type": "string"
+         },
+         "age_hours": {
+          "anyOf": [
+           {
+            "type": "integer",
+            "minimum": 0
+           },
+           {
+            "type": "null"
+           }
+          ]
+         }
+        }
+       }
+      ]
+     }
+    },
+    "denied": {
+     "type": "array",
+     "items": {
+      "allOf": [
+       {
+        "type": "object",
+        "required": [
+         "accessId"
+        ],
+        "properties": {
+         "accessId": {
+          "$ref": "common.schema.json#/$defs/access_id"
+         }
+        }
+       },
+       {
+        "type": "object",
+        "required": [
+         "name",
+         "email",
+         "folders"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "email": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "folders": {
+          "$ref": "common.schema.json#/$defs/folders"
+         },
+         "approved_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "decided_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "decision": {
+          "enum": [
+           "approve",
+           "add",
+           "deny"
+          ]
+         },
+         "by": {
+          "type": "string"
+         },
+         "requested_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "submitted_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "denied_at": {
+          "$ref": "common.schema.json#/$defs/time"
+         },
+         "reason": {
+          "type": "string"
+         },
+         "mailbox": {
+          "type": "string"
+         },
+         "ref": {
+          "type": "string"
+         },
+         "age_hours": {
+          "anyOf": [
+           {
+            "type": "integer",
+            "minimum": 0
+           },
+           {
+            "type": "null"
+           }
+          ]
+         }
+        }
+       }
+      ]
+     }
+    }
+   }
+  },
+  "add.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "email": {
+       "type": "string"
+      },
+      "note": {
+       "type": "string"
+      },
+      "grants": {
+       "$ref": "common.schema.json#/$defs/grants"
+      }
+     }
+    }
+   ]
+  },
+  "add.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId",
+    "record"
+   ],
+   "properties": {
+    "status": {
+     "const": "approved"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "record": {
+     "type": "object",
+     "description": "an approval as stored: name, email, note, approved_at, by, lids, grants, and the lifecycle fields of ACCESS_CHECK.md's table",
+     "required": [
+      "name",
+      "email",
+      "approved_at",
+      "lids"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "email": {
+       "type": "string"
+      },
+      "note": {
+       "type": "string"
+      },
+      "approved_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "by": {
+       "type": "string"
+      },
+      "lids": {
+       "type": "array",
+       "items": {
+        "$ref": "common.schema.json#/$defs/lid"
+       }
+      },
+      "grants": {
+       "$ref": "common.schema.json#/$defs/grants"
+      },
+      "decided_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "decision": {
+       "enum": [
+        "approve",
+        "lab"
+       ]
+      },
+      "google_account": {
+       "type": "string"
+      },
+      "invited_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "any_installation": {
+       "const": true
+      }
+     }
+    }
+   }
+  },
+  "approve.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "properties": {
+      "grants": {
+       "$ref": "common.schema.json#/$defs/grants"
+      },
+      "note": {
+       "type": "string"
+      }
+     }
+    }
+   ]
+  },
+  "approve.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId",
+    "record",
+    "invite"
+   ],
+   "properties": {
+    "status": {
+     "const": "approved"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "record": {
+     "type": "object",
+     "description": "an approval as stored: name, email, note, approved_at, by, lids, grants, and the lifecycle fields of ACCESS_CHECK.md's table",
+     "required": [
+      "name",
+      "email",
+      "approved_at",
+      "lids"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "email": {
+       "type": "string"
+      },
+      "note": {
+       "type": "string"
+      },
+      "approved_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "by": {
+       "type": "string"
+      },
+      "lids": {
+       "type": "array",
+       "items": {
+        "$ref": "common.schema.json#/$defs/lid"
+       }
+      },
+      "grants": {
+       "$ref": "common.schema.json#/$defs/grants"
+      },
+      "decided_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "decision": {
+       "enum": [
+        "approve",
+        "lab"
+       ]
+      },
+      "google_account": {
+       "type": "string"
+      },
+      "invited_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "any_installation": {
+       "const": true
+      }
+     }
+    },
+    "invite": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "object",
+       "required": [
+        "group",
+        "members_url",
+        "google_account",
+        "invited",
+        "mode"
+       ],
+       "properties": {
+        "group": {
+         "type": "string"
+        },
+        "members_url": {
+         "type": "string"
+        },
+        "google_account": {
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "invited": {
+         "type": "boolean"
+        },
+        "mode": {
+         "enum": [
+          "manual",
+          "workspace"
+         ]
+        },
+        "address": {
+         "type": "string"
+        },
+        "invited_at": {
+         "$ref": "common.schema.json#/$defs/time"
+        },
+        "error": {
+         "type": "string"
+        }
+       }
+      }
+     ]
+    }
+   }
+  },
+  "deny.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "properties": {
+      "reason": {
+       "type": "string"
+      }
+     }
+    }
+   ]
+  },
+  "deny.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId"
+   ],
+   "properties": {
+    "status": {
+     "const": "denied"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "lab_member": {
+     "type": "boolean"
+    }
+   }
+  },
+  "invited.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "properties": {
+      "clear": {
+       "type": "boolean"
+      }
+     }
+    }
+   ]
+  },
+  "invited.answer": {
+   "anyOf": [
+    {
+     "type": "object",
+     "required": [
+      "status",
+      "accessId",
+      "invited_at"
+     ],
+     "properties": {
+      "status": {
+       "const": "invited"
+      },
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      },
+      "invited_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "already": {
+       "const": true
+      }
+     }
+    },
+    {
+     "type": "object",
+     "required": [
+      "status",
+      "accessId"
+     ],
+     "properties": {
+      "status": {
+       "const": "not-invited"
+      },
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    }
+   ]
+  },
+  "grant.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "required": [
+      "grants"
+     ],
+     "properties": {
+      "grants": {
+       "$ref": "common.schema.json#/$defs/grants"
+      }
+     }
+    }
+   ]
+  },
+  "grant.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId",
+    "grants"
+   ],
+   "properties": {
+    "status": {
+     "const": "granted"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "grants": {
+     "$ref": "common.schema.json#/$defs/grants"
+    }
+   }
+  },
+  "seat-rule.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "required": [
+      "any"
+     ],
+     "properties": {
+      "any": {
+       "type": "boolean"
+      }
+     }
+    }
+   ]
+  },
+  "seat-rule.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId",
+    "any_installation"
+   ],
+   "properties": {
+    "status": {
+     "const": "seat-rule"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "any_installation": {
+     "type": "boolean"
+    }
+   }
+  },
+  "seat.request": {
+   "type": "object",
+   "required": [
+    "accessId"
+   ],
+   "properties": {
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    }
+   }
+  },
+  "seat.answer": {
+   "type": "object",
+   "required": [
+    "accessId",
+    "any_installation",
+    "seat",
+    "conflict"
+   ],
+   "properties": {
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "any_installation": {
+     "type": "boolean"
+    },
+    "seat": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "object",
+       "required": [
+        "install_short",
+        "first_seen",
+        "last_seen"
+       ],
+       "properties": {
+        "install_short": {
+         "type": "string",
+         "pattern": "^[0-9a-f]{8}$",
+         "description": "a fingerprint of the installation identifier, never the identifier"
+        }
+       }
+      }
+     ]
+    },
+    "conflict": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "object",
+       "required": [
+        "kind",
+        "count"
+       ],
+       "properties": {
+        "kind": {
+         "enum": [
+          "other_installation",
+          "other_account"
+         ]
+        },
+        "count": {
+         "type": "integer",
+         "minimum": 1
+        }
+       }
+      }
+     ]
+    }
+   }
+  },
+  "reset-seat.request": {
+   "type": "object",
+   "required": [
+    "accessId"
+   ],
+   "properties": {
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    }
+   }
+  },
+  "reset-seat.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId",
+    "had_seat"
+   ],
+   "properties": {
+    "status": {
+     "const": "reset"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "had_seat": {
+     "type": "boolean"
+    }
+   }
+  },
+  "remove.request": {
+   "type": "object",
+   "required": [
+    "accessId"
+   ],
+   "properties": {
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    }
+   }
+  },
+  "remove.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId",
+    "revoked"
+   ],
+   "properties": {
+    "status": {
+     "const": "removed"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "revoked": {
+     "type": "array",
+     "items": {
+      "$ref": "common.schema.json#/$defs/lid"
+     }
+    }
+   }
+  },
+  "revoke-lid.request": {
+   "anyOf": [
+    {
+     "type": "object",
+     "required": [
+      "lids"
+     ],
+     "properties": {
+      "lids": {
+       "type": "array",
+       "items": {
+        "$ref": "common.schema.json#/$defs/lid"
+       },
+       "description": "500 at most"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "required": [
+      "lid"
+     ],
+     "properties": {
+      "lid": {
+       "$ref": "common.schema.json#/$defs/lid"
+      }
+     }
+    }
+   ]
+  },
+  "revoke-lid.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "revoked"
+   ],
+   "properties": {
+    "status": {
+     "const": "revoked"
+    },
+    "lid": {
+     "$ref": "common.schema.json#/$defs/lid"
+    },
+    "lids": {
+     "type": "array",
+     "items": {
+      "$ref": "common.schema.json#/$defs/lid"
+     }
+    },
+    "revoked": {
+     "type": "array",
+     "items": {
+      "$ref": "common.schema.json#/$defs/lid"
+     },
+     "description": "every licence id on the list now"
+    }
+   }
+  },
+  "cv.request": {
+   "type": "object",
+   "required": [
+    "accessId"
+   ],
+   "properties": {
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    }
+   }
+  },
+  "notify-test.request": {
+   "type": "object"
+  },
+  "notify-test.answer": {
+   "type": "object",
+   "required": [
+    "sent",
+    "provider_status"
+   ],
+   "properties": {
+    "sent": {
+     "type": "boolean"
+    },
+    "provider_status": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "detail": {
+     "type": "string"
+    }
+   }
+  },
+  "storage-add.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "required": [
+      "folders"
+     ],
+     "properties": {
+      "folders": {
+       "anyOf": [
+        {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        {
+         "type": "string"
+        }
+       ]
+      },
+      "name": {
+       "type": "string"
+      },
+      "note": {
+       "type": "string"
+      }
+     }
+    }
+   ]
+  },
+  "storage-add.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId",
+    "record"
+   ],
+   "properties": {
+    "status": {
+     "const": "approved"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "record": {
+     "type": "object",
+     "required": [
+      "name",
+      "email",
+      "folders"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "email": {
+       "type": "string"
+      },
+      "note": {
+       "type": "string"
+      },
+      "folders": {
+       "$ref": "common.schema.json#/$defs/folders"
+      },
+      "approved_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "decided_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "decision": {
+       "enum": [
+        "approve",
+        "add",
+        "deny"
+       ]
+      },
+      "by": {
+       "type": "string"
+      },
+      "requested_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "submitted_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "denied_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "reason": {
+       "type": "string"
+      },
+      "mailbox": {
+       "type": "string"
+      },
+      "ref": {
+       "type": "string"
+      },
+      "age_hours": {
+       "anyOf": [
+        {
+         "type": "integer",
+         "minimum": 0
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  "storage-approve.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "properties": {
+      "folders": {
+       "anyOf": [
+        {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        {
+         "type": "string"
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  "storage-approve.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId",
+    "added",
+    "record"
+   ],
+   "properties": {
+    "status": {
+     "const": "approved"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "added": {
+     "$ref": "common.schema.json#/$defs/folders"
+    },
+    "record": {
+     "type": "object",
+     "required": [
+      "name",
+      "email",
+      "folders"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "email": {
+       "type": "string"
+      },
+      "note": {
+       "type": "string"
+      },
+      "folders": {
+       "$ref": "common.schema.json#/$defs/folders"
+      },
+      "approved_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "decided_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "decision": {
+       "enum": [
+        "approve",
+        "add",
+        "deny"
+       ]
+      },
+      "by": {
+       "type": "string"
+      },
+      "requested_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "submitted_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "denied_at": {
+       "$ref": "common.schema.json#/$defs/time"
+      },
+      "reason": {
+       "type": "string"
+      },
+      "mailbox": {
+       "type": "string"
+      },
+      "ref": {
+       "type": "string"
+      },
+      "age_hours": {
+       "anyOf": [
+        {
+         "type": "integer",
+         "minimum": 0
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  "storage-deny.request": {
+   "allOf": [
+    {
+     "type": "object",
+     "required": [
+      "accessId"
+     ],
+     "properties": {
+      "accessId": {
+       "$ref": "common.schema.json#/$defs/access_id"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "properties": {
+      "reason": {
+       "type": "string"
+      }
+     }
+    }
+   ]
+  },
+  "storage-deny.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId"
+   ],
+   "properties": {
+    "status": {
+     "const": "denied"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "reads": {
+     "$ref": "common.schema.json#/$defs/folders"
+    }
+   }
+  },
+  "storage-remove.request": {
+   "type": "object",
+   "required": [
+    "accessId"
+   ],
+   "properties": {
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    }
+   }
+  },
+  "storage-remove.answer": {
+   "type": "object",
+   "required": [
+    "status",
+    "accessId"
+   ],
+   "properties": {
+    "status": {
+     "const": "removed"
+    },
+    "accessId": {
+     "$ref": "common.schema.json#/$defs/access_id"
+    },
+    "folders": {
+     "$ref": "common.schema.json#/$defs/folders"
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "vector": "revoked-list",
+ "route": "/revoked",
+ "summary": "Two key ids withdrawn: the signed list",
+ "request": {
+  "method": "GET",
+  "path": "/revoked",
+  "headers": {}
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "cache-control": "max-age=300",
+   "content-type": "text/plain"
+  },
+  "body": "ASHLEYREV1.eyJ2IjoxLCJraWQiOiJ2ZWN0b3JzIiwiaXNzdWVkIjoxNzkxMzc0NDAwLCJyZXZva2VkIjpbIkwtQUFBQUFBQUFBQUFBIiwiTC1CQkJCQkJCQkJCQkIiXX0.4JQs03k9U5uz8WDyz-ITRdLtgMDiOhIdJG4Q3DBAIGvErOg4s6x7wFsDMjhS7k5LMR-ZQlHVy1EgCHNtOzM_BA"
+ }
+}

@@ -1,0 +1,73 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/access-check.answer.schema.json",
+ "title": "POST /access_check: the answer (200)",
+ "description": "Yes or no about one account, never the list. A no always carries requestPage; reason appears only on a refusal of an approved account, and a client reads a reason it does not know as a plain no. ACCESS_CHECK.md, Answers.",
+ "anyOf": [
+  {
+   "$ref": "#/$defs/yes"
+  },
+  {
+   "$ref": "#/$defs/no"
+  }
+ ],
+ "$defs": {
+  "yes": {
+   "type": "object",
+   "required": [
+    "approved",
+    "access_id",
+    "checked",
+    "until"
+   ],
+   "properties": {
+    "approved": {
+     "const": true
+    },
+    "access_id": {
+     "type": "string"
+    },
+    "checked": {
+     "$ref": "common.schema.json#/$defs/time"
+    },
+    "until": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "the approval's end date when it has one (none does today)"
+    }
+   }
+  },
+  "no": {
+   "type": "object",
+   "required": [
+    "approved",
+    "access_id",
+    "requestPage"
+   ],
+   "properties": {
+    "approved": {
+     "const": false
+    },
+    "access_id": {
+     "type": "string"
+    },
+    "reason": {
+     "enum": [
+      "other_installation",
+      "other_account",
+      "update_required"
+     ]
+    },
+    "requestPage": {
+     "$ref": "common.schema.json#/$defs/page"
+    }
+   }
+  }
+ }
+}

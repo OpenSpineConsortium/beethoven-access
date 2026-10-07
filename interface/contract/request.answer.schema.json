@@ -1,0 +1,26 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/request.answer.schema.json",
+ "title": "POST /request: the answer (202 or 200)",
+ "description": "202 when stored: mailbox says whether a confirmation e-mail went to the student (confirm), the request was confirmed already (confirmed) or no confirmation is asked (not_verified); the older form's answer has no mailbox. 200 when already decided, and nothing is stored.",
+ "type": "object",
+ "required": [
+  "status"
+ ],
+ "properties": {
+  "status": {
+   "enum": [
+    "pending",
+    "approved",
+    "denied"
+   ]
+  },
+  "mailbox": {
+   "enum": [
+    "confirm",
+    "confirmed",
+    "not_verified"
+   ]
+  }
+ }
+}

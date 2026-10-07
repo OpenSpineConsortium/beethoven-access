@@ -1,0 +1,71 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/trial-key.payload.schema.json",
+ "title": "The payload of a trial key",
+ "description": "What a key from /trial carries, as JSON inside the signed token. The product field stays \"ashley\" for every build's verifier; kid names the public key that verifies it.",
+ "type": "object",
+ "required": [
+  "v",
+  "kid",
+  "lid",
+  "product",
+  "edition",
+  "sub",
+  "email",
+  "iat",
+  "nbf",
+  "exp",
+  "grace_days"
+ ],
+ "not": {
+  "description": "a key that names an institution (a domain field, or the edition \"site\") is refused by every VS Code build whoever holds it; a trial key names one person",
+  "required": [
+   "domain"
+  ]
+ },
+ "properties": {
+  "v": {
+   "const": 1
+  },
+  "kid": {
+   "type": "string"
+  },
+  "lid": {
+   "$ref": "common.schema.json#/$defs/lid"
+  },
+  "product": {
+   "enum": [
+    "ashley",
+    "beethoven"
+   ]
+  },
+  "edition": {
+   "const": "trial"
+  },
+  "sub": {
+   "$ref": "common.schema.json#/$defs/access_id"
+  },
+  "email": {
+   "type": "string"
+  },
+  "name": {
+   "type": "string"
+  },
+  "iat": {
+   "type": "integer",
+   "minimum": 0
+  },
+  "nbf": {
+   "type": "integer",
+   "minimum": 0
+  },
+  "exp": {
+   "type": "integer",
+   "minimum": 0
+  },
+  "grace_days": {
+   "type": "integer",
+   "minimum": 0
+  }
+ }
+}
