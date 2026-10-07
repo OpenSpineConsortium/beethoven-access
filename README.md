@@ -145,15 +145,18 @@ with the one rule `main`, no reviewers (a merge deploys with no click), and the 
 
 | Secret | What |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | a Cloudflare API token limited to Workers. Limited is not small: whoever holds it can put any code under the two names, and that code runs with everything the service holds, its secrets (the admin token, the trial signing key, the decision key, the mail key) and its records (the approved list, and the readers list the grid turns into read access on the lab volume) |
-| `CLOUDFLARE_ACCOUNT_ID` | the Cloudflare account's id |
+| `CLOUDFLARE_API_TOKEN` | a Cloudflare API token limited to Workers, made from Cloudflare's "Edit Cloudflare Workers" template (as Cloudflare listed it on 2026-10-07: Workers Routes Write, Workers Scripts Write, Workers KV Storage Write, Workers Tail Read, Workers R2 Storage Write, Account Settings Read, User Details Read, User Memberships Read), with Account Resources limited to the one account that holds the Workers; whether a smaller custom token deploys is not yet measured. Limited is not small: whoever holds it can put any code under the two names, and that code runs with everything the service holds, its secrets (the admin token, the trial signing key, the decision key, the mail key) and its records (the approved list, and the readers list the grid turns into read access on the lab volume). A token that cannot list the account's KV namespaces, or lists them without the three `wrangler.toml` binds (the token or the account id is another account's), is refused by the deploy job before anything is deployed, with the likely causes in the run's summary (the first run, 2026-10-07, failed at the deploy itself with Cloudflare's error 10041, "KV namespace not found", before this check existed; nothing was deployed) |
+| `CLOUDFLARE_ACCOUNT_ID` | the id of that same Cloudflare account, as its Workers & Pages overview shows it (a domain's Zone ID is also 32 hex characters and is not it) |
 
 They are the environment's and never repository secrets (Settings, Secrets and variables, Actions): a
 repository secret reaches a workflow pushed on any branch, and every job also sees the repository's
 secrets, so one saved there by mistake defeats the limit to `main`; delete it there if it was. Until both
 are saved the deploy job says so in the run's summary and passes; nothing else changes. GitHub lists that
-run under the environment like any other; the summary says whether it deployed. They reach the one deploy
-step through its environment, where wrangler reads them; they are never an argument and never printed.
+run under the environment like any other; the summary says whether it deployed. Before it deploys, the job
+lists the account's KV namespaces with the token and stops, with the likely causes in plain words, when the
+listing fails or one of the three ids in `wrangler.toml` is not among them; nothing is deployed then. They
+reach the two steps that use them, that check and the deploy, through their environment, where wrangler
+reads them; they are never an argument and never printed.
 
 `deploy.sh` is still how everything else is done, from the maintainer's machine: the first deploy of a
 name and the KV namespaces (the workflow never creates one: it checks that `wrangler.toml` names all three
