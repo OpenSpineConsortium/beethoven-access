@@ -3238,14 +3238,16 @@ test('admin.mjs readers and roster print what grid_access.sh reads; an older ser
   await storageRequest(env, { access_id: 'zq0013', email: 'zq0013@wayne.edu', folders: ['/rs/rs_grp_oschome'] });
   await adminPost(env, 'storage-deny', { accessId: 'zq0013', reason: '' });
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
-  // older: a service deployed before the text routes, which answers them as any unknown GET; page: a sign-in
-  // page in front of the service, which answers 200 with HTML
+  // older: a service deployed before the text routes, which answers them as any unknown GET; oldest: one
+  // deployed before storage.js, which answers the storage routes the same way; page: a sign-in page in front
+  // of the service, which answers 200 with HTML
   let older = false;
+  let oldest = false;
   let page = false;
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);
-    if (older && /^\/admin\/(roster|readers)\.txt/.test(req.url)) {
+    if ((older && /^\/admin\/(roster|readers)\.txt/.test(req.url)) || (oldest && req.url.startsWith('/admin/storage-'))) {
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end('{"error":"not found"}');
       return;
@@ -3294,6 +3296,11 @@ test('admin.mjs readers and roster print what grid_access.sh reads; an older ser
     // the storage list itself is still there on that service
     assert.equal((await run('storage-list')).code, 0);
     older = false;
+    oldest = true;
+    r = await run('storage-list');
+    assert.deepEqual([r.code, r.stdout], [1, ''], 'storage-list');
+    assert.match(r.stderr, /the access service has no lab storage list yet: deploy the service/);
+    oldest = false;
     page = true;
     for (const cmd of ['readers', 'roster']) {
       r = await run(cmd);
