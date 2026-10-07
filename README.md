@@ -21,9 +21,10 @@ same on every pull request and every push to `main` (`.github/workflows/ci.yml`)
 
 **Deploying.** A change to `worker.js`, `storage.js` or `wrangler.toml` that lands on `main` is deployed
 under both names by `.github/workflows/deploy.yml`, after the tests, once greg has saved its two
-Cloudflare secrets ([Deploying from GitHub](#deploying-from-github)). `deploy.sh`, on the maintainer's
-machine, does what the workflow never does: a name's first deploy, the KV namespaces, and the Worker's
-secrets, which come from the vendor folder ([Two names](#two-names)).
+Cloudflare secrets in the environment `cloudflare`, which only `main` may use ([Deploying from
+GitHub](#deploying-from-github)). `deploy.sh`, on the maintainer's machine, does what the workflow never
+does: a name's first deploy, the KV namespaces, and the Worker's secrets, which come from the vendor folder
+([Two names](#two-names)).
 
 ## What it does
 
@@ -116,29 +117,43 @@ names `ashley-service`). `admin.mjs` takes the address from `BEETHOVEN_SERVICE_U
 ## Deploying from GitHub
 
 greg's decision of 2026-10-07: `.github/workflows/deploy.yml` deploys the service whenever a change to
-`worker.js`, `storage.js`, `wrangler.toml` (or to the workflow itself) lands on `main`, and when started by
-hand from the Actions tab (main's code only). One run at a time, never cancelled midway. It runs the tests
-first (`node --test test/*.test.mjs`) and deploys nothing if they fail; then it does what `deploy.sh` does
-with the code and nothing else: `wrangler deploy --name beethoven-access --var
-SERVICE_NAME:beethoven-access`, a check that `/health` on the address the deploy printed answers
-`{"ok":true}`, and the same for `ashley-service` (both names run the same code, [Two names](#two-names)).
-wrangler is pinned to an exact version in the workflow (4.148.0); raise it there by hand. The two
-actions it uses, `actions/checkout` and `actions/setup-node`, are pinned to a commit with the version
-beside it.
+`worker.js`, `storage.js`, `wrangler.toml` (or to the workflow or its tool's lock) lands on `main`, and
+when started by hand from the Actions tab (main's code only). One run at a time on `main`, never cancelled
+midway; a run started by hand on another branch runs the tests only and never takes the place of a run
+waiting on `main`. It runs the tests first (`node --test test/*.test.mjs`) and deploys nothing if they
+fail; then it does what `deploy.sh` does with the code and nothing else: `wrangler deploy --name
+beethoven-access --var SERVICE_NAME:beethoven-access`, a check that `/health` on the address the deploy
+printed answers `{"ok":true}`, and the same for `ashley-service` (both names run the same code, [Two
+names](#two-names)). A re-run keeps the commit of the run it repeats (GitHub's rule), so before it deploys
+the job compares the Worker's three files with what `main` holds now and skips, with a note in the run's
+summary, when `main` has newer code: re-running an old run never puts older code back. When a deploy fails
+after `beethoven-access` took the new code, the two names run different code until a run deploys both; the
+run's summary says so, and re-running the failed job is the fix.
+
+wrangler comes from `.github/deploy/package-lock.json`, which npm made and which names every package it
+installs by hash, so the code that holds the token is the code on record (wrangler 4.148.0 since
+2026-10-07). To raise it: change the version in `.github/deploy/package.json` and run `npm install
+--package-lock-only` in that folder. The two actions the workflows use, `actions/checkout` and
+`actions/setup-node`, are pinned to a commit with the version beside it.
 
 `.github/workflows/ci.yml` runs the same tests, and `bash -n` on the two shell scripts, on every pull
 request and every push to `main`. It reads no secret and deploys nothing.
 
-It needs two repository secrets, which greg saves under Settings, Secrets and variables, Actions:
+It needs two secrets of the environment `cloudflare`, which greg makes and fills under Settings,
+Environments: **New environment** `cloudflare`, **Deployment branches and tags** set to selected branches
+with the one rule `main`, no reviewers (a merge deploys with no click), and the two environment secrets:
 
 | Secret | What |
 |---|---|
-| `CLOUDFLARE_API_TOKEN` | a Cloudflare API token limited to Workers: it can edit Workers on the account and nothing else there |
+| `CLOUDFLARE_API_TOKEN` | a Cloudflare API token limited to Workers. Limited is not small: whoever holds it can put any code under the two names, and that code runs with everything the service holds, its secrets (the admin token, the trial signing key, the decision key, the mail key) and its records (the approved list, and the readers list the grid turns into read access on the lab volume) |
 | `CLOUDFLARE_ACCOUNT_ID` | the Cloudflare account's id |
 
-Until both are saved the deploy job says so in the run's summary and passes; nothing else changes. They
-reach the one deploy step through its environment, where wrangler reads them; they are never an argument
-and never printed.
+They are the environment's and never repository secrets (Settings, Secrets and variables, Actions): a
+repository secret reaches a workflow pushed on any branch, and every job also sees the repository's
+secrets, so one saved there by mistake defeats the limit to `main`; delete it there if it was. Until both
+are saved the deploy job says so in the run's summary and passes; nothing else changes. GitHub lists that
+run under the environment like any other; the summary says whether it deployed. They reach the one deploy
+step through its environment, where wrangler reads them; they are never an argument and never printed.
 
 `deploy.sh` is still how everything else is done, from the maintainer's machine: the first deploy of a
 name and the KV namespaces (the workflow never creates one: it checks that `wrangler.toml` names all three
@@ -567,7 +582,11 @@ only folder, since it covers every other: a list that names it beside others kee
 more folders for a reader of `.` leaves `.`, and approving `.` for a reader of some folders replaces them.
 The e-mail and the decision pages say "all of the lab storage (`/rs/rs_grp_oschome`)", never a bare dot,
 and say what it gives: everything there the group may read and the volume's owner owns. The grid can add
-read only on what the owner owns, so a folder another person owns stays as they set it.
+read only on what the owner owns, so a folder another person owns stays as they set it. Approve or add `.`
+only once the scheduled grid task runs a `tools/grid_access.sh` that takes the line `<AccessID> .`
+(hpcworker's change of 2026-10-07, which was not on its `main` yet that day): an older one refuses the
+whole readers list at that line and changes nothing on the grid, so approvals and removals on the approved
+list stop reaching the grid too until the task's copy is updated.
 
 Nothing here reaches the grid. `node admin.mjs readers` prints the readers, one `<AccessID> <folder>` a
 line (`<AccessID> .` for the whole volume), as `GET /admin/readers.txt` gives them, and

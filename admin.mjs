@@ -82,6 +82,8 @@ async function gridList(route, what) {
 }
 // a time in one short column: the date and the minute, UTC; a dash when there is none
 const at = (t) => (t ? String(t).slice(0, 16).replace('T', ' ') : '-');
+// a person's folders as the lab lead reads them: the whole volume, "." on record and in readers, in words
+const named = (folders, root) => ((folders || []).includes('.') ? `all of the lab storage (${root})` : (folders || []).join(', '));
 // one line per request: where it stands, its mailbox and its age (an unconfirmed one also says when it goes)
 function requestLine(p) {
   const until = p.stage === 'unconfirmed' ? `, dropped ${at(p.expires_at)}${p.confirm_mail === 'failed' ? ', the confirmation e-mail could not be sent' : ''}` : '';
@@ -168,11 +170,11 @@ switch (cmd) {
     }
     console.log(`lab storage: ${j.root}`);
     console.log(`requests (${(j.pending || []).length}):`);
-    for (const p of j.pending || []) console.log(`  ${p.accessId}${p.name ? `  ${p.name}` : ''}  asks for ${(p.folders || []).join(', ')}  (${p.age_hours ?? '?'} h old): ${p.note || ''}`);
+    for (const p of j.pending || []) console.log(`  ${p.accessId}${p.name ? `  ${p.name}` : ''}  asks for ${named(p.folders, j.root)}  (${p.age_hours ?? '?'} h old): ${p.note || ''}`);
     console.log(`readers (${(j.readers || []).length}):`);
-    for (const r of j.readers || []) console.log(`  ${r.accessId}${r.name ? `  ${r.name}` : ''}  reads ${(r.folders || []).join(', ')}  (since ${at(r.approved_at)}, ${r.decision || 'approve'} ${at(r.decided_at)} by ${r.by || '?'})`);
+    for (const r of j.readers || []) console.log(`  ${r.accessId}${r.name ? `  ${r.name}` : ''}  reads ${named(r.folders, j.root)}  (since ${at(r.approved_at)}, ${r.decision || 'approve'} ${at(r.decided_at)} by ${r.by || '?'})`);
     console.log(`denied (${(j.denied || []).length}):`);
-    for (const d of j.denied || []) console.log(`  ${d.accessId}${d.name ? `  ${d.name}` : ''}  asked for ${(d.folders || []).join(', ')}, denied ${at(d.denied_at)}${d.reason ? `: ${d.reason}` : ''}`);
+    for (const d of j.denied || []) console.log(`  ${d.accessId}${d.name ? `  ${d.name}` : ''}  asked for ${named(d.folders, j.root)}, denied ${at(d.denied_at)}${d.reason ? `: ${d.reason}` : ''}`);
     break;
   }
   case 'storage-approve': {

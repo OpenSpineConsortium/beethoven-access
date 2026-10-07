@@ -31,7 +31,8 @@ const FOLDER = /^[A-Za-z0-9_][A-Za-z0-9._-]*(\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$/;
 const FOLDER_MAX = 200;
 const FOLDERS_MAX = 8;
 const DEFAULT_ROOT = '/rs/rs_grp_oschome';
-// the whole volume: the spelling admin.mjs readers prints and tools/grid_access.sh takes ("<AccessID> .")
+// the whole volume: the spelling admin.mjs readers prints ("<AccessID> ."), which tools/grid_access.sh takes
+// from hpcworker's change of 2026-10-07 on; an older one refuses the whole list (README.md, "The whole volume")
 const WHOLE = '.';
 // what /storage_decide takes; /decide takes neither, and these links take none of /decide's
 const STORAGE_DECISIONS = new Set(['storage-approve', 'storage-deny']);

@@ -3223,6 +3223,10 @@ test('admin.mjs readers and roster print what grid_access.sh reads; an older ser
   await adminPost(env, 'storage-add', { accessId: 'rd5678', folders: ['shared/access', 'lab'] });
   await adminPost(env, 'storage-add', { accessId: 'cd5678', folders: ['shared/data'] });
   await adminPost(env, 'storage-add', { accessId: 'zq0006', folders: ['/rs/rs_grp_oschome/'] });
+  // a request and a denial of the whole volume, for storage-list's own lines; neither is a reader
+  await storageRequest(env, { access_id: 'zq0011', email: 'zq0011@wayne.edu', folders: ['.'] });
+  await storageRequest(env, { access_id: 'zq0013', email: 'zq0013@wayne.edu', folders: ['/rs/rs_grp_oschome'] });
+  await adminPost(env, 'storage-deny', { accessId: 'zq0013', reason: '' });
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
   // older: a service deployed before the text routes, which answers them as any unknown GET; page: a sign-in
   // page in front of the service, which answers 200 with HTML
@@ -3261,6 +3265,11 @@ test('admin.mjs readers and roster print what grid_access.sh reads; an older ser
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /^readers \(3\):$/m);
     assert.match(r.stdout, /^ {2}rd5678 {2}reads lab, shared\/access {2}\(since /m);
+    // what the lab lead reads says the whole volume in words, never a bare dot; readers above keeps "."
+    assert.match(r.stdout, /^ {2}zq0011 {2}A\. Reader {2}asks for all of the lab storage \(\/rs\/rs_grp_oschome\) {2}\(\d+ h old\)/m);
+    assert.match(r.stdout, /^ {2}zq0006 {2}reads all of the lab storage \(\/rs\/rs_grp_oschome\) {2}\(since /m);
+    assert.match(r.stdout, /^ {2}zq0013 {2}A\. Reader {2}asked for all of the lab storage \(\/rs\/rs_grp_oschome\), denied /m);
+    assert.doesNotMatch(r.stdout, /(asks for|reads|asked for) \.(\s|,|$)/m);
     assert.ok(!r.stderr.includes('secret-admin-token') && !r.stdout.includes('secret-admin-token'), 'the token is never printed');
     // what admin.mjs prints is the service's body, byte for byte
     const body = async (route) => (await call(env, 'GET', `/admin/${route}`, { headers: ADMIN })).text();
