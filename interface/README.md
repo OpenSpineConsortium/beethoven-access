@@ -68,9 +68,10 @@ hpcworker's contract), and a reader ignores a field it does not know.
   Worker answers now, and passes its route's method, status, content type, schemas and line grammar;
   every method of a route for programs has a vector; no vector shows a secret; the key and the list in
   the vectors verify with `key.json` and with no other key.
-- `test/boundary.test.mjs`: no tracked file reaches another repository's checkout (a sibling path, a
-  variable naming a checkout, a clone, a submodule, a workflow that checks out another repository,
-  a dependency by path or git URL), with a known list of exceptions, each with its reason, that fails
+- `test/boundary.test.mjs`: no tracked file reaches another repository's checkout (a sibling path, in
+  a shell's or Node's spelling, a path from a home folder, a climb above this checkout's root, a variable
+  naming a checkout, a clone, a submodule, a workflow that checks out another repository or runs one of
+  its workflows, a dependency by path or git URL), with a known list of exceptions, each with its reason, that fails
   when an entry goes stale (empty today); the manifest's shape, kinds and paths; and no import, so no
   pinned copy anywhere.
 

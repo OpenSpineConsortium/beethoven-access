@@ -28,13 +28,27 @@ const SIBLING_PATH = new RegExp(`(?:\\.\\./|\\)/|\\}/)(${NAMES})(?![A-Za-z0-9_.-
 // (`${siteOrigin(env)}/beethoven/request.html`, and the tests' `${SITE}/beethoven/request.html`, SITE being
 // the website's origin there)
 const WEB_BASE = /origin|\bport\b|url\b|^site$/i;
+// the same in Node's spelling: path.join(REPO, '..', '<repo>'), as service.mjs found the website's checkout
+const SIBLING_SEGMENTS = new RegExp(`['"]\\.\\.['"]\\s*,\\s*(?:['"][^'"]*['"]\\s*,\\s*)*['"](${NAMES})['"]`, 'g');
+// a path from a home folder or a user's folder to another checkout: ~/<repo>, $HOME/x/<repo>, /home/<user>/<repo>,
+// C:\Users\<user>\...\<repo> and the Windows folders as Git Bash and WSL see them. A path on the grid, such as
+// /rs/rs_grp_oschome/shared/beethoven, starts nowhere of these and is not a checkout
+const HOME_PATH = new RegExp(`(?:~|\\$HOME|\\$\\{HOME\\}|%USERPROFILE%|/home/[^/\\s"'\`]+|/root|/Users/[^/\\s"'\`]+|(?:/mnt)?/[a-z]/Users/[^/\\s"'\`]+|[A-Za-z]:[\\\\/]+Users[\\\\/]+[^\\\\/\\s"'\`]+)(?:[\\\\/]+[^\\\\/\\s"'\`]+)*?[\\\\/]+(${NAMES})(?![A-Za-z0-9_.-])`, 'g');
 // a variable whose value is another repository's checkout: the names the ecosystem uses, and SITE_REPO and
-// REPO_ROOT, with which deploy.sh wrote the website's services.json and read the VS Code edition's keys
-// before 2026-10-07. Never BEETHOVEN_VENDOR_DIR: the vendor folder is the maintainer's, not a repository.
-const CHECKOUT_VAR = /\b(SITE_REPO|REPO_ROOT|(?:HPCWORKER|ASHLEY|SITES|QA|INTAKE|BEETHOVEN_(?:SERVICE|QA|AGENTS|RESEARCH|SITES?|EXTENSION|DESKTOP|VSCODE|BASE|HUB))_DIR)\b/g;
+// REPO_ROOT, with any prefix (BEETHOVEN_SITE_REPO, ASHLEY_SITE_REPO), with which deploy.sh and service.mjs found
+// the website's checkout and deploy.sh read the VS Code edition's keys before 2026-10-07. Never
+// BEETHOVEN_VENDOR_DIR: the vendor folder is the maintainer's, not a repository.
+const CHECKOUT_VAR = /\b((?:[A-Z][A-Z0-9]*_)*(?:SITE_REPO|REPO_ROOT)|(?:HPCWORKER|ASHLEY|SITES|QA|INTAKE|BEETHOVEN_(?:SERVICE|QA|AGENTS|RESEARCH|SITES?|EXTENSION|DESKTOP|VSCODE|BASE|HUB))_DIR)\b/g;
 // a clone of another repository of the organisation
 const CLONE = new RegExp(`\\b(?:git clone|gh repo clone)\\b[^\\n]*?OpenSpineConsortium/(${NAMES})\\b`, 'gi');
-const CHECKOUT_ACTION_REPO = /^\s*repository:\s*\S+/m;
+// a climb out of this checkout: '..' segments, one after another in a path ("../..", "$HERE/../..", "cd ..") or
+// as arguments ('..', '..'), more of them than the file is deep. A test one folder down climbs one to the root;
+// a file at the root, or a workflow (which runs at the root), climbs none. A comment is not a path.
+const CLIMB_SLASH = /(?<![A-Za-z0-9_.-])\.\.(?:[\\/]\.\.)*(?![A-Za-z0-9_.-])/g;
+const CLIMB_ARGS = /(?:['"]\.\.['"]\s*,\s*)*['"]\.\.['"]/g;
+// a workflow that checks out another repository (block or flow style), or runs a workflow or action of one
+const CHECKOUT_ACTION_REPO = /\brepository\s*:/;
+const OTHER_REPO_USES = /\buses\s*:\s*['"]?OpenSpineConsortium\//;
 const KINDS = ['contract', 'schema', 'data', 'python', 'cli', 'files', 'program', 'text'];
 
 /** what still reaches another checkout today: the file, what matched, why it is still here and who removes it */
@@ -69,8 +83,11 @@ function text(rel) {
   }
 }
 
-/** every reach of another checkout in one line, as the names that matched */
-function reaches(line) {
+/** how many folders a file is below the root its paths are read from: a workflow's are the checkout's root */
+const depthOf = (rel) => (rel.startsWith('.github/') ? 0 : rel.split('/').length - 1);
+
+/** every reach of another checkout in one line of a file depth folders down, as the names that matched */
+function reaches(line, depth = 0) {
   const out = [];
   for (const m of line.matchAll(SIBLING_PATH)) {
     const at = m.index ?? 0;
@@ -81,7 +98,11 @@ function reaches(line) {
     }
     out.push(m[1]);
   }
-  for (const rx of [CHECKOUT_VAR, CLONE]) for (const m of line.matchAll(rx)) out.push(m[1]);
+  for (const rx of [SIBLING_SEGMENTS, HOME_PATH, CHECKOUT_VAR, CLONE]) for (const m of line.matchAll(rx)) out.push(m[1]);
+  if (!/^\s*(?:\/\/|#|\*|\/\*)/.test(line)) {
+    const climbs = [...line.matchAll(CLIMB_SLASH), ...line.matchAll(CLIMB_ARGS)].map((m) => m[0].match(/\.\./g).length);
+    if (Math.max(0, ...climbs) > depth) out.push('..');
+  }
   return out;
 }
 
@@ -95,12 +116,37 @@ function covered(p) {
 const MANIFEST = JSON.parse(fs.readFileSync(path.join(REPO, 'interface', 'INTERFACE.json'), 'utf8'));
 
 test('the patterns find what they look for, and leave the website\'s addresses and the vendor folder alone', () => {
-  for (const line of ['node ../hpcworker/framework/bin/hpcworker', 'cp "$(dirname "$HERE")/beethoven-vscode/grid/license.js" .', 'const k = `${parent}/openspineconsortium.github.io/beethoven/services.json`;', 'SITE_REPO=${SITE_REPO:-../site}', 'export HPCWORKER_DIR=/x', 'git clone https://github.com/OpenSpineConsortium/beethoven-extension', 'const k = `${siteRepo}/beethoven/services.json`;']) {
+  for (const line of [
+    'node ../hpcworker/framework/bin/hpcworker', 'cp "$(dirname "$HERE")/beethoven-vscode/grid/license.js" .', 'const k = `${parent}/openspineconsortium.github.io/beethoven/services.json`;', 'SITE_REPO=${SITE_REPO:-../site}', 'export HPCWORKER_DIR=/x', 'git clone https://github.com/OpenSpineConsortium/beethoven-extension', 'const k = `${siteRepo}/beethoven/services.json`;',
+    // this repository's own lines at the split (6fefe8d), when it was the VS Code edition's tools/intake
+    "const REPO = path.resolve(HERE, '..', '..');",
+    "const site = env.BEETHOVEN_SITE_REPO || env.ASHLEY_SITE_REPO || path.join(REPO, '..', 'openspineconsortium.github.io');",
+    'HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(cd "$HERE/../.." && pwd)"',
+    'SITE_REPO="${BEETHOVEN_SITE_REPO:-${ASHLEY_SITE_REPO:-$REPO/../openspineconsortium.github.io}}"',
+    // and the other spellings of the same
+    "const L = require(path.join(HERE, '..', 'beethoven-vscode', 'grid', 'license.js'));",
+    'node "$BEETHOVEN_SITE_REPO/tools/build_site.py"',
+    'bash /home/claude/hpcworker/tools/grid_access.sh',
+    'bash "$HOME/hpcworker/tools/grid_access.sh"',
+    'node ~/beethoven-extension/scripts/x.mjs',
+    'node C:\\Users\\grego\\OneDrive\\Desktop\\ashley\\tools\\intake\\admin.mjs roster',
+    'node /mnt/c/Users/grego/OneDrive/Desktop/ashley/tools/intake/admin.mjs roster',
+    'cd "$HERE/.." && bash hpcworker/tools/grid_access.sh',
+    'cd .. && ls',
+  ]) {
     assert.ok(reaches(line).length > 0, line);
   }
-  for (const line of ['return `${siteOrigin(env)}/beethoven/request.html`;', 'const PAGE = `${SITE}/beethoven/request.html`;', 'BEETHOVEN_VENDOR_DIR=/mnt/c/vendor node trial-key.mjs', 'BEETHOVEN_SERVICE_URL=https://x', 'GITHUB_REPO: "example/beethoven-vscode"', 'const ROOT = "/rs/rs_grp_oschome/shared/beethoven";']) {
+  for (const line of [
+    'return `${siteOrigin(env)}/beethoven/request.html`;', 'const PAGE = `${SITE}/beethoven/request.html`;', 'BEETHOVEN_VENDOR_DIR=/mnt/c/vendor node trial-key.mjs', 'BEETHOVEN_SERVICE_URL=https://x', 'GITHUB_REPO: "example/beethoven-vscode"', 'const ROOT = "/rs/rs_grp_oschome/shared/beethoven";',
+    'const SHARED = "/rs/rs_grp_oschome/shared/beethoven/hpcworker/current";', 'VENDOR="$HOME/.beethoven-vendor"', 'CLAUDE_CONFIG_DIR="$HOME/.beethoven/claude"', 'BEETHOVEN_VENDOR_DIR=/mnt/c/Users/grego/.beethoven-vendor',
+    "standard: 'https://github.com/OpenSpineConsortium/beethoven/blob/main/INTERFACES.md'", 'const f = (...args) => g(...args);', 'const STORAGE_ROOT = env.STORAGE_ROOT || DEFAULT_ROOT;',
+    '// never "..", never a hidden folder',
+  ]) {
     assert.deepEqual(reaches(line), [], line);
   }
+  // one folder down, one climb is this checkout's root, and two leave it
+  for (const line of ["const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');", "import worker from '../worker.js';", "for (const f of ['..', 'lab/..', '../etc']) {"]) assert.deepEqual(reaches(line, 1), [], line);
+  for (const line of ["const REPO = path.resolve(HERE, '..', '..');", 'node ../../x.mjs']) assert.deepEqual(reaches(line, 1), ['..'], line);
 });
 
 test('rule 1: reads, runs and copies no file of another checkout, but what the known list names', () => {
@@ -109,7 +155,7 @@ test('rule 1: reads, runs and copies no file of another checkout, but what the k
     // prose may name another repository; this file names them to look for them
     if (rel.endsWith('.md') || rel === THIS_FILE) continue;
     text(rel).split('\n').forEach((line, i) => {
-      for (const name of reaches(line)) {
+      for (const name of reaches(line, depthOf(rel))) {
         const key = `${rel}\t${name}`;
         if (!found.has(key)) found.set(key, `${rel}:${i + 1}: ${line.trim().slice(0, 160)}`);
       }
@@ -127,7 +173,20 @@ test('rule 1: no submodule, and no workflow checks out another repository', () =
   assert.equal(fs.existsSync(path.join(REPO, '.gitmodules')), false);
   const workflows = FILES.filter((f) => f.startsWith('.github/workflows/'));
   assert.ok(workflows.length >= 2);
-  for (const rel of workflows) assert.equal(CHECKOUT_ACTION_REPO.test(text(rel)), false, `${rel} checks out another repository`);
+  for (const rel of workflows) {
+    assert.equal(CHECKOUT_ACTION_REPO.test(text(rel)), false, `${rel} checks out another repository`);
+    assert.equal(OTHER_REPO_USES.test(text(rel)), false, `${rel} runs a workflow or an action of another repository`);
+  }
+});
+
+test('the workflow patterns find a checkout of another repository however it is written, and its workflows', () => {
+  for (const t of ['      - uses: actions/checkout@v4\n        with:\n          repository: OpenSpineConsortium/hpcworker\n', '        with: { repository: OpenSpineConsortium/beethoven-vscode, path: vs }\n']) {
+    assert.ok(CHECKOUT_ACTION_REPO.test(t), t);
+  }
+  for (const t of ['    uses: OpenSpineConsortium/hpcworker/.github/workflows/ci.yml@main\n', "      - uses: 'OpenSpineConsortium/beethoven-qa/plugin@v2'\n"]) assert.ok(OTHER_REPO_USES.test(t), t);
+  for (const t of ['      - uses: actions/checkout@3d3c42e5\n        with:\n          persist-credentials: false\n', '      - uses: ./.github/actions/local\n']) {
+    assert.ok(!CHECKOUT_ACTION_REPO.test(t) && !OTHER_REPO_USES.test(t), t);
+  }
 });
 
 test('rule 1: no dependency by path or git URL', () => {
