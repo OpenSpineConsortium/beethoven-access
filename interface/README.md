@@ -11,7 +11,7 @@ the e-mails' wording, the pages a person opens from an e-mail.
 | Export | Kind | Version | What it is | Taken by |
 | --- | --- | --- | --- | --- |
 | `http-api` | contract | 1 | `contract/`: `routes.json` (every route, who calls it, its auth, the schema of each request and of each answer by status), the JSON Schemas (`*.schema.json`), `lines.json` (the plain-text answers: the roster and readers lists, the signed revocation list and trial key), `signing-keys.json` (the public key of each key id the deployed service signs keys and the revocation list with, which `deploy.sh` holds it to), and `vectors/`, what the real Worker answered, with `vectors/key.json`, the public key that signed the vectors' key and list | beethoven-extension, beethoven-vscode, hpcworker, openspineconsortium.github.io |
-| `http-api-text` | text | 1 | `ACCESS_CHECK.md` and `README.md` (Routes, The request portal, Lab storage), the same contract written for people | the same |
+| `http-api-text` | text | 1 | `ACCESS_CHECK.md` and `README.md` (Routes, The request portal, Lab storage), the same contract written for people | beethoven-extension, beethoven-vscode, hpcworker: not the website, whose repository is public; the two files carry dated records of the deployed service, and the website's pages need the contract only |
 
 It takes nothing from another repository (`imports` is empty).
 
@@ -63,7 +63,8 @@ hpcworker's contract), and a reader ignores a field it does not know.
 ## What checks it
 
 - `test/interface.test.mjs`: the manifest's shape, every path names a file, `interface/` holds
-  nothing unlisted; the schemas use only the keywords above and every reference resolves, and the
+  nothing unlisted; no exported file names an AccessID but the made-up ones, the store reviewers' mock
+  account and the maintainer's own, and the public website takes no text export; the schemas use only the keywords above and every reference resolves, and the
   check refuses what it should; `routes.json` against the Worker's routes; every vector is what the
   Worker answers now, and passes its route's method, status, content type, schemas and line grammar;
   every method of a route for programs has a vector; no vector shows a secret; the key and the list in

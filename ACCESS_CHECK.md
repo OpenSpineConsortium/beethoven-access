@@ -397,7 +397,10 @@ kept as they were written. They were run in Beethoven for VS Code's repository, 
 as `tools/intake` until 2026-10-07, so their commands and test counts name that layout
 (`node tools/intake/admin.mjs ...`, `worker.test.mjs`, `tools/license/vendor.test.mjs`). From this
 repository's root the same commands are `node admin.mjs ...`, and the tests are
-`node --test test/*.test.mjs`.
+`node --test test/*.test.mjs`. One change only: this file is exported to other repositories
+(`interface/INTERFACE.json`), so a student who was on the approved list then is called "a student"
+below instead of by their AccessID. Every other AccessID below is the maintainer's, the store reviewers'
+mock account or made up for the proof.
 
 ## Proof, 2026-09-29 afternoon (before the public name changed)
 
@@ -770,13 +773,13 @@ WSL) found no key under any of the made-up ids or installations: no `seen:`, `se
 `installed:`, `conflict:`, `approved:`, `pending:`, `denied:` or `cv:` key. What is left expires on its
 own: the day's counters (`chk:`, `notify_versions:`), the 24-hour e-mail flags (`notified:zq0004`,
 `conflict_notified:zq0001`, `conflict_notified:zq0003`), and the spent links (`decide:<nonce>`, 30
-days). `admin.mjs list` afterwards: pending 0, and approved 3 (go2432, hy9698, st1234), as before the
+days). `admin.mjs list` afterwards: pending 0, and approved 3 (go2432, a student, st1234), as before the
 proof.
 
 **Not proved live, by the tests only:** the daily reminder (`worker.test.mjs`, "the daily reminder lists
 approved accounts ..."), the student's e-mail at approval and every other part of `MAIL_STUDENTS` `"1"`
 (it stays `"0"`), and the Workspace adapter (against a stub of Google; `GROUP_MODE` stays `"manual"`).
-The first reminder runs at 13:00 UTC on 2026-10-01. It will list go2432 and hy9698 (approved for
+The first reminder runs at 13:00 UTC on 2026-10-01. It will list go2432 and that student (approved for
 Beethoven, not marked invited, no installation checked in; st1234 is left out) unless they are marked
 invited first: `admin.mjs invited go2432`, or Mark invited on the admin page.
 
@@ -798,8 +801,8 @@ fails on the earlier `worker.js` and passes now, and both names were deployed ag
    before a remove and add still stamped `invited_at`, and the reminder stopped listing someone who may
    never have been invited. Now the link's ref and the approval's must be equal, a missing one counting
    as empty: either way round it answers "This approval was replaced" and changes nothing. A link and an
-   approval that both have no ref (the reminder's link for an approval made by `add`, as go2432 and
-   hy9698 were) still work.
+   approval that both have no ref (the reminder's link for an approval made by `add`, as go2432's and
+   that student's were) still work.
 2. **A second confirmation link for one version.** The same form sent twice before confirming gives
    two confirmation e-mails for one version; using the second after the first confirmed it again and
    e-mailed the maintainer a second set of decision links. Now it answers "Already confirmed", writes
@@ -822,7 +825,7 @@ POST /decide, invited, with a ref zq0303 lacks       -> 409 "This approval was r
                                                         invited_at unset (the earlier code stamped it)
 GET  /decide, invited, no ref                        -> 200, the question (opened, not pressed)
 admin remove zq0301, zq0302, zq0303                  -> 200 each
-/admin/list 65 s later, both names                   -> pending 0; approved go2432, hy9698, st1234;
+/admin/list 65 s later, both names                   -> pending 0; approved go2432, a student, st1234;
                                                         no made-up id mentioned anywhere
 ```
 

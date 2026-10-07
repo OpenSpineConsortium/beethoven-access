@@ -75,6 +75,27 @@ test('every export path names a file, and interface/ holds nothing no export lis
   assert.deepEqual(loose, [], 'files under interface/ that no export lists');
 });
 
+// An export copies files whole into other repositories, and the website's is public: an AccessID in one is
+// a person's, told to whoever reads it, when the service answers about one account yes or no and nothing else
+// about anyone (ACCESS_CHECK.md, The decision). So an exported file names only the AccessIDs made up for tests
+// and proofs (zq and zz, and the few below), the store reviewers' mock account (st1234) and the maintainer's
+// own (go2432); and the website takes no text export, since the texts carry dated records of the service.
+const NAMED = new Set(['ab1234', 'cd5678', 'rd5678', 'ef0001', 'gh0002', 'st1234', 'go2432']);
+const MADE_UP = /^(?:zq|zz)[0-9]{4}$/;
+const PUBLIC = new Set(['OpenSpineConsortium/openspineconsortium.github.io']);
+const strangers = (body) => [...new Set(body.match(/\b[a-z]{2}[0-9]{4}\b/g) || [])].filter((id) => !NAMED.has(id) && !MADE_UP.test(id));
+
+test('no export names a person\'s AccessID, and the public website takes no text export', () => {
+  assert.deepEqual(strangers('approved go2432, ab1234, zq0001, st1234; hy0001 pending'), ['hy0001'], 'the check finds one');
+  const everything = filesUnder(REPO);
+  for (const e of manifest().exports) {
+    for (const f of everything.filter((x) => covered(x, e.paths))) {
+      assert.deepEqual(strangers(fs.readFileSync(path.join(REPO, f), 'utf8')), [], `${e.id}: ${f} names an AccessID that is not one made up here`);
+    }
+    if (e.kind === 'text') assert.deepEqual(e.consumers.filter((c) => PUBLIC.has(c)), [], `${e.id}: a public repository takes it`);
+  }
+});
+
 test('the schemas use only the keywords every client\'s check reads, and every reference resolves', () => {
   const names = fs.readdirSync(CONTRACT).filter((n) => n.endsWith('.schema.json'));
   assert.ok(names.length >= 10);

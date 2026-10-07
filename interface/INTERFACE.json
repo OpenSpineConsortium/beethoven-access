@@ -19,7 +19,7 @@
    "version": 1,
    "summary": "The same contract written for people: ACCESS_CHECK.md (the access check, the admin routes and the lists the grid reads) and README.md's Routes and request portal sections",
    "paths": ["ACCESS_CHECK.md", "README.md"],
-   "consumers": ["OpenSpineConsortium/beethoven-extension", "OpenSpineConsortium/beethoven-vscode", "OpenSpineConsortium/hpcworker", "OpenSpineConsortium/openspineconsortium.github.io"]
+   "consumers": ["OpenSpineConsortium/beethoven-extension", "OpenSpineConsortium/beethoven-vscode", "OpenSpineConsortium/hpcworker"]
   }
  ],
  "imports": []
