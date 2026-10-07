@@ -601,6 +601,19 @@ refuses rather than taking anyone's entries away: deploy the service (both names
 that reads them. The two routes and their grammar are in [ACCESS_CHECK.md, "The lists the grid
 reads"](ACCESS_CHECK.md#the-lists-the-grid-reads).
 
+**Moving the grid's sync to this repository (2026-10-07), in this order.** Until the move, the
+maintainer's scheduled grid task (`tools/grid_access_task.ps1 -Install` in `hpcworker`, its
+`docs/guides/LAB_LEAD.md` section 9) ran Beethoven for VS Code's `tools/intake/admin.mjs roster` and
+`readers`, which built both lists from `GET /admin/allowlist` and `GET /admin/storage-list`. That file
+leaves Beethoven for VS Code with the move, and this repository's `admin.mjs` reads the two text routes,
+which the Worker deployed before the move does not answer. So: first deploy both names from here (the
+deploy workflow or `deploy.sh`) and see `node admin.mjs roster` and `node admin.mjs readers` print the
+lists; then register the task again with `-AdminTool` naming this checkout's `admin.mjs` (or set
+`BEETHOVEN_ROSTER_CMD` and `BEETHOVEN_READERS_CMD` to it) and run it once with `-ToolArgs '--dry-run
+--force'`; only then take Beethoven for VS Code's change that removes `tools/intake` onto the machine
+that runs the task. In any other order every run refuses and changes nothing, so the volume's entries
+stop following the approved list, and someone taken off it keeps theirs until the task works again.
+
 ## Publishing your own revocation list
 
 Keys issued by hand with Beethoven for VS Code's licence tool are withdrawn with that tool, and that
