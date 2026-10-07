@@ -11,8 +11,8 @@ marks, used here to say what it runs; "Open OnDemand" is the mark of its publish
 **Who uses it.** Beethoven, the browser extension (`POST /access_check`); Beethoven for VS Code (keys
 from `POST /trial`, the revocation list at `GET /revoked`, error reports at `POST /report`, and its
 `publish.sh` at `POST /admin/revoke-lid`); hpcworker's `tools/grid_access.sh` (the two lists the grid
-applies, `GET /admin/roster.txt` and `GET /admin/readers.txt`); and the website (the request, lab
-storage and admin pages). What they code to is the contract in `interface/`
+applies, `GET /admin/roster.txt` and `GET /admin/readers.txt`, read with the grid token or the admin
+token); and the website (the request, lab storage and admin pages). What they code to is the contract in `interface/`
 ([interface/README.md](interface/README.md)): every route, the JSON Schemas of its requests and answers,
 and vectors the real Worker answered.
 
@@ -55,7 +55,7 @@ address. The same code runs under two Worker names, `beethoven-access` and `ashl
 | `POST /access_check` | Beethoven (`access_check` in `https://openspineconsortium.com/beethoven/services.json`; 4.0.0 to 6.0.0 read `/ashley/services.json`) | is this one account approved, on this installation? Yes or no, from the same list; contract in [ACCESS_CHECK.md](ACCESS_CHECK.md) |
 | `GET /revoked` | every installation, daily | the signed revocation list |
 | `POST /report` | installations that allow error reports | an issue labelled `diagnostic-report`; repeats add a count |
-| `/admin/*` | `https://openspineconsortium.com/beethoven/admin.html`, `admin.mjs`, the VS Code edition's `publish.sh` (`revoke-lid`) | `list`, `approve` (optional `grants`), `deny`, `add` (optional `grants`), `remove`, `invited`, `grant`, `seat`, `reset-seat`, `seat-rule`, `cv`, `revoke-lid`, `notify-test`, and for lab storage `storage-list`, `storage-approve`, `storage-deny`, `storage-add`, `storage-remove`, and the two lists the grid reads as plain text, `roster.txt` and `readers.txt`, behind the bearer token `ADMIN_TOKEN`. The admin page's contract (every field of `list` and `storage-list`, every write) is in [ACCESS_CHECK.md, "The admin routes"](ACCESS_CHECK.md#the-admin-routes-the-admin-pages-contract) |
+| `/admin/*` | `https://openspineconsortium.com/beethoven/admin.html`, `admin.mjs`, the VS Code edition's `publish.sh` (`revoke-lid`) | `list`, `approve` (optional `grants`), `deny`, `add` (optional `grants`), `remove`, `invited`, `grant`, `seat`, `reset-seat`, `seat-rule`, `cv`, `revoke-lid`, `notify-test`, and for lab storage `storage-list`, `storage-approve`, `storage-deny`, `storage-add`, `storage-remove`, the two lists the grid reads as plain text, `roster.txt` and `readers.txt`, and the grid token: `grid-token` (`POST` makes one, replacing any earlier one, and answers it once; `GET` shows when it was made and last read) and `grid-token-withdraw`; behind the bearer token `ADMIN_TOKEN`. `roster.txt` and `readers.txt` also take the grid token, and nothing else does ([The grid token](#the-grid-token)). The admin page's contract (every field of `list` and `storage-list`, every write) is in [ACCESS_CHECK.md, "The admin routes"](ACCESS_CHECK.md#the-admin-routes-the-admin-pages-contract) |
 | cron, `0 13 * * *` | Cloudflare, once a day | the invitation reminder: one e-mail listing the approvals for Beethoven not marked invited to the Google Group Beethoven-users after an hour ([The private listing](#the-private-listing)) |
 | `GET /health` | you | `{"ok":true}` |
 
@@ -251,7 +251,9 @@ application's CORS settings to allow the origin `https://openspineconsortium.com
 credentials and the headers `Authorization` and `Content-Type`; the page already sends its calls
 with credentials, so the Access session cookie rides along. `admin.mjs`, and the VS Code edition's
 `publish.sh`, call the same routes from a terminal: create a service token for them in Access, or run them
-while the policy also allows the machine's address. The free plan covers a lab.
+while the policy also allows the machine's address. The job on the grid reads `admin/roster.txt` and
+`admin/readers.txt` with the grid token and cannot sign in to Access: leave those two paths out of the
+application, or the grid stops following the lists. The free plan covers a lab.
 
 ## The approved list, day to day
 
@@ -602,7 +604,8 @@ them at the next run. What a reader gets and never gets is that tool's header an
 404, and `admin.mjs` then ends with exit 1 and says to deploy, with nothing on stdout, so the grid tool
 refuses rather than taking anyone's entries away: deploy the service (both names) before the grid tool
 that reads them. The two routes and their grammar are in [ACCESS_CHECK.md, "The lists the grid
-reads"](ACCESS_CHECK.md#the-lists-the-grid-reads).
+reads"](ACCESS_CHECK.md#the-lists-the-grid-reads); the grid's own job reads them with the grid token
+([The grid token](#the-grid-token)), `admin.mjs` with the admin token.
 
 **Moving the grid's sync to this repository (2026-10-07), in this order.** Until the move, the
 maintainer's scheduled grid task (`tools/grid_access_task.ps1 -Install` in `hpcworker`, its
@@ -616,6 +619,25 @@ lists; then register the task again with `-AdminTool` naming this checkout's `ad
 --force'`; only then take Beethoven for VS Code's change that removes `tools/intake` onto the machine
 that runs the task. In any other order every run refuses and changes nothing, so the volume's entries
 stop following the approved list, and someone taken off it keeps theirs until the task works again.
+
+## The grid token
+
+Added 2026-10-07, so the admin token never sits on the cluster and the maintainer's own machine runs
+nothing for the grid: hpcworker's `tools/grid_access.sh` (its change of the same day) runs on the cluster
+as a chain of short Slurm jobs, started with `--watch`, and reads the two lists with a token that can
+read them and nothing else, from the file `grid_token` in its vendor folder before `admin_token`. The
+maintainer makes it on the admin page (`POST /admin/grid-token`), which downloads it as that file. The
+service answers the token once, with `cache-control: no-store`, and keeps only its SHA-256 (KV `ACCESS`,
+`grid-token`); a lost file is not recovered, only replaced. With it `GET /admin/roster.txt` and
+`GET /admin/readers.txt` answer exactly what the admin token gets; every other admin route, the grid
+token's own included, answers it the 401 of a wrong admin token. Making a new one replaces the old one at
+once where it is made; `POST /admin/grid-token-withdraw` takes it away. KV is eventually consistent, so
+for about a minute other Cloudflare locations may still take the old token, or not yet take the new one:
+a grid run in that minute may be refused; it then changes nothing and works at its next run.
+`GET /admin/grid-token` shows when the token was made and when it last read a list (`made_at`,
+`last_read_at`, `null` when none), never the token or its hash; the last read is recorded once an hour at
+most, so the lists' readers cost about 24 KV writes a day, and a failed write of it never fails a read.
+Contract: [ACCESS_CHECK.md, "The lists the grid reads"](ACCESS_CHECK.md#the-lists-the-grid-reads).
 
 ## Publishing your own revocation list
 
@@ -643,6 +665,8 @@ installations through `/revoked`.
 | ACCESS | `conflict_notified:<AccessID>` | when the last e-mail about a second installation went | 24 hours |
 | ACCESS | `confirm_mail:<AccessID>:<day>` | confirmation e-mails sent to the student that day (3 at most) | 2 days |
 | ACCESS | `revoked`, `revoked_signed` | the withdrawn key ids; the signed list | until replaced |
+| ACCESS | `grid-token` | the grid token's SHA-256 (never the token) and when it was made (`made_at`) | until replaced or withdrawn |
+| ACCESS | `grid-token-read` | when the grid token last read a list (`last_read_at`, written once an hour at most) and the first 16 characters of its SHA-256 (`sha256_head`), which tie it to that token: a late write from a location still holding a replaced token lands here and never brings that token back | until a new token is made or the token is withdrawn |
 | ACCESS | `audit:<time>:<4 hex>` | action, AccessID, by (and the grants of an approval) | for the record |
 | ACCESS | `req:<hash>:<day>` | requests from one connection (a salted hash; the address itself is never stored) | 2 days |
 | ACCESS | `notified:<AccessID>` | when the last e-mail about this person's request was sent | 24 hours |
@@ -735,7 +759,12 @@ printing those bodies byte for byte (and failing, with exit 1 and nothing on std
 without the text routes, a sign-in page in front of it and a wrong token); and the whole volume:
 `.` and the root, either way written, as the one folder, in a request, an approval, the union with folders
 already read, `storage-add` and `storage-remove`, said in words in the e-mail and on the pages, and printed
-`<AccessID> .` by `readers`. `test/vendor.test.mjs` checks the order in which the vendor folder is found, and
+`<AccessID> .` by `readers`; and the grid token: kept as its hash and nowhere as itself, read as the two
+lists with the admin token's bodies, refused with the admin route's exact 401 everywhere else (a near miss,
+the hash given as the token, a kept hash off by one character), replaced and withdrawn at once, its last
+read written once an hour at most (through `ctx.waitUntil` when there is one), a failed write of it never
+failing the read, and a late write from a location still holding an old record never bringing that token
+back. `test/vendor.test.mjs` checks the order in which the vendor folder is found, and
 `test/trial-key.test.mjs` what `trial-key.mjs` gives `deploy.sh` (the key the Worker imports, an encrypted
 one opened with the passphrase variable, nothing printed when it cannot be read or is not the key
 `interface/contract/signing-keys.json` names).

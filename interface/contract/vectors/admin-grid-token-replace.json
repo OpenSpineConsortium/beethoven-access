@@ -1,0 +1,33 @@
+{
+ "vector": "admin-grid-token-replace",
+ "route": "/admin/grid-token",
+ "summary": "Make it again: the earlier one is replaced (replaced: true) and reads nothing from then on",
+ "request": {
+  "method": "POST",
+  "path": "/admin/grid-token",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "authorization": "Bearer <ADMIN_TOKEN>",
+   "content-type": "application/json"
+  },
+  "body": {}
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "token": "1823fda23efc88072b303910ca6898564a59268ffc70c94c191a7fdc1633d12b",
+   "made_at": "2026-10-07T12:00:00.000Z",
+   "replaced": true
+  }
+ }
+}

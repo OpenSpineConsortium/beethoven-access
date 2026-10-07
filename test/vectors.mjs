@@ -36,7 +36,10 @@ const PUBLIC_RAW = (() => {
 export const VECTOR_KEY = { kid: 'vectors', public_key: PUBLIC_RAW };
 
 // The made-up secrets the Worker is given. None is shown in a vector: the admin token and a sign-in token
-// are written as placeholders in the recorded request, and no answer carries one.
+// are written as placeholders in the recorded request, and no answer carries one. A grid token is shown as
+// <GRID_TOKEN> in a request too; the answer that makes one is the only place it is, because it is that
+// answer, and one made here comes from the seeded random bytes and opens nothing but the Worker of these
+// vectors.
 const ADMIN_TOKEN = 'vectors-admin-token';
 const SECRETS = {
   TRIAL_KEY_PKCS8_B64: PKCS8.toString('base64'),
@@ -125,22 +128,27 @@ function fixedWorld() {
 }
 
 // One exchange with the Worker. origin: the Origin header a browser would send (null: none, as curl or a
-// program sends); admin: the admin token in the authorization header.
-async function exchange(env, { method, path: p, origin = SITE, admin = false, auth, type, body }) {
+// program sends); admin: the admin token in the authorization header; grid: a grid token to send there instead.
+async function exchange(env, { method, path: p, origin = SITE, admin = false, grid, auth, type, body }) {
   const headers = {};
   if (origin) headers.origin = origin;
   if (admin) headers.authorization = `Bearer ${ADMIN_TOKEN}`;
+  if (grid) headers.authorization = `Bearer ${grid}`;
   if (auth) headers.authorization = auth;
   let text;
   if (body !== undefined) {
     text = typeof body === 'string' ? body : JSON.stringify(body);
     headers['content-type'] = type || 'application/json';
   }
-  const res = await worker.fetch(new Request(`${ORIGIN}${p}`, { method, headers: { ...headers, 'cf-connecting-ip': '203.0.113.7' }, body: text }), env, { waitUntil: () => {} });
+  // what the Worker hands to waitUntil (an e-mail, the grid token's last read) is finished before the next
+  // exchange, so no vector depends on how far it got
+  const later = [];
+  const res = await worker.fetch(new Request(`${ORIGIN}${p}`, { method, headers: { ...headers, 'cf-connecting-ip': '203.0.113.7' }, body: text }), env, { waitUntil: (work) => later.push(work) });
   const answerType = res.headers.get('content-type') || '';
   const raw = await res.text();
-  const shown = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, PLACEHOLDERS.get(v) || v]));
-  for (const v of Object.values(shown)) if (v.includes(ADMIN_TOKEN)) throw new Error('a vector would show the admin token');
+  await Promise.all(later);
+  const shown = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, PLACEHOLDERS.get(v) || (grid && v === `Bearer ${grid}` ? 'Bearer <GRID_TOKEN>' : v)]));
+  for (const v of Object.values(shown)) if (v.includes(ADMIN_TOKEN) || (grid && v.includes(grid))) throw new Error('a vector would show a token');
   return {
     request: { method, path: p, headers: shown, ...(body === undefined ? {} : { body }) },
     answer: {
@@ -153,6 +161,8 @@ async function exchange(env, { method, path: p, origin = SITE, admin = false, au
 
 // Steps a scenario takes before the exchange it records; their answers are not kept
 const admin = (env, route, body) => exchange(env, { method: 'POST', path: `/admin/${route}`, admin: true, body });
+// a grid token made the way the admin page makes one; the scenario sends it as grid
+const gridToken = async (env) => (await admin(env, 'grid-token', {})).answer.body.token;
 const check = (env, accessId, installId, over = {}) =>
   exchange(env, { method: 'POST', path: '/access_check', origin: EXTENSION, type: 'text/plain;charset=UTF-8', body: { v: 1, access_id: accessId, portal: 'ondemand.grid.wayne.edu', product: 'bridge', version: '15.0.0', ...(installId ? { install_id: installId } : {}), ...over } });
 const INSTALL_A = '0123456789abcdef0123456789abcdef';
@@ -301,6 +311,43 @@ const SCENARIOS = [
   ['admin-storage-remove', '/admin/storage-remove', 'Take a reader off', async (env) => {
     await admin(env, 'storage-add', { accessId: 'rd5678', folders: ['shared/data'] });
     return admin(env, 'storage-remove', { accessId: 'rd5678' });
+  }],
+  // the grid token's come last: the random bytes are one sequence across the scenarios, so a scenario
+  // added before others would move their bytes too
+  ['admin-roster-txt-grid-token', '/admin/roster.txt', 'The approved list read with the grid token, as the job on the grid reads it: the same body the admin token gets', async (env) => {
+    for (const id of ['zz9999', 'ab1234']) await admin(env, 'add', { accessId: id, name: 'Someone' });
+    const grid = await gridToken(env);
+    return exchange(env, { method: 'GET', path: '/admin/roster.txt', origin: null, grid });
+  }],
+  ['admin-readers-txt-grid-token', '/admin/readers.txt', 'The readers read with the grid token: the same body the admin token gets', async (env) => {
+    await admin(env, 'storage-add', { accessId: 'rd5678', folders: ['shared/access', 'lab'] });
+    await admin(env, 'storage-add', { accessId: 'zq0006', folders: ['.'] });
+    const grid = await gridToken(env);
+    return exchange(env, { method: 'GET', path: '/admin/readers.txt', origin: null, grid });
+  }],
+  ['admin-grid-token-withdrawn', '/admin/roster.txt', 'A grid token after it was withdrawn (or replaced): the 401 of a wrong admin token', async (env) => {
+    const grid = await gridToken(env);
+    await admin(env, 'grid-token-withdraw', {});
+    return exchange(env, { method: 'GET', path: '/admin/roster.txt', origin: null, grid });
+  }],
+  ['admin-grid-token-elsewhere', '/admin/list', 'The grid token on any admin route but the two lists: the 401 of a wrong admin token', async (env) => {
+    const grid = await gridToken(env);
+    return exchange(env, { method: 'GET', path: '/admin/list', origin: null, grid });
+  }],
+  ['admin-grid-token-make', '/admin/grid-token', 'Make the grid token: the only answer that carries it (the admin page saves it as the file grid_token). This one comes from the vectors\' seeded random bytes and opens nothing but them', (env) => admin(env, 'grid-token', {})],
+  ['admin-grid-token-replace', '/admin/grid-token', 'Make it again: the earlier one is replaced (replaced: true) and reads nothing from then on', async (env) => {
+    await gridToken(env);
+    return admin(env, 'grid-token', {});
+  }],
+  ['admin-grid-token-status', '/admin/grid-token', 'When the grid token was made and last read a list; never the token or its hash', async (env) => {
+    const grid = await gridToken(env);
+    await exchange(env, { method: 'GET', path: '/admin/roster.txt', origin: null, grid });
+    return exchange(env, { method: 'GET', path: '/admin/grid-token', admin: true });
+  }],
+  ['admin-grid-token-status-none', '/admin/grid-token', 'No grid token: both dates null', (env) => exchange(env, { method: 'GET', path: '/admin/grid-token', admin: true })],
+  ['admin-grid-token-withdraw', '/admin/grid-token-withdraw', 'Take the grid token away', async (env) => {
+    await gridToken(env);
+    return admin(env, 'grid-token-withdraw', {});
   }],
 ];
 

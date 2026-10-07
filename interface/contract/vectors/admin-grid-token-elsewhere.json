@@ -1,0 +1,28 @@
+{
+ "vector": "admin-grid-token-elsewhere",
+ "route": "/admin/list",
+ "summary": "The grid token on any admin route but the two lists: the 401 of a wrong admin token",
+ "request": {
+  "method": "GET",
+  "path": "/admin/list",
+  "headers": {
+   "authorization": "Bearer <GRID_TOKEN>"
+  }
+ },
+ "answer": {
+  "status": 401,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "error": "admin token missing or wrong"
+  }
+ }
+}

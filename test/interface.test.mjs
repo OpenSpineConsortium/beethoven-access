@@ -266,6 +266,10 @@ test('every method of a route for programs has a vector, and no vector shows a s
       assert.ok(vectors.some((v) => v.route === r.path && v.request.method === m), `no vector for ${m} ${r.path}`);
     }
   }
+  // a token a request carried is shown as a placeholder, whichever token it was (the grid token's only showing
+  // is the answer that makes it, which is the vectors' own)
+  for (const v of vectors) if (v.request.headers.authorization !== undefined) assert.match(v.request.headers.authorization, /^Bearer <[^<>]+>$/, `${v.vector}: the authorization header`);
+  assert.ok(vectors.some((v) => v.request.headers.authorization === 'Bearer <GRID_TOKEN>'), 'a list read with the grid token');
   const all = fs.readdirSync(VECTORS).map((n) => fs.readFileSync(path.join(VECTORS, n), 'utf8')).join('\n');
   for (const secret of ['vectors-admin-token', 'vectors-ip-salt', 'vectors-decide-key', 'vectors-mail-key', 'vectors-github-token', 'graph-ab1234', 'graph-cd5678']) assert.ok(!all.includes(secret), secret);
   assert.ok(!all.includes('302e020100300506032b657004220420'), 'the private key is never in a vector');

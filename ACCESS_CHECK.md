@@ -239,7 +239,8 @@ and `admin.mjs`. Nothing here is public: every route is behind the bearer token.
 
 **Every call.** `https://beethoven-access.openspineconsortium.workers.dev/admin/<route>` (the page reads
 the address from `license_service`'s origin in `/beethoven/services.json`; either Worker name answers the
-same). Header `Authorization: Bearer <admin token>` (the vendor folder's `admin_token`). From a browser
+same). Header `Authorization: Bearer <admin token>` (the vendor folder's `admin_token`; the two lists the
+grid reads also take the grid token, [The lists the grid reads](#the-lists-the-grid-reads)). From a browser
 the `Origin` must be `SITE_ORIGIN` (`https://openspineconsortium.com`); any other origin gets 403 with no
 CORS header. `OPTIONS` answers 204 with `access-control-allow-origin: https://openspineconsortium.com`,
 `access-control-allow-credentials: true`, `access-control-allow-methods: GET, POST, OPTIONS`,
@@ -369,9 +370,10 @@ folder, sorted, and nothing else (`<accessId> .` for a reader of the whole volum
 ### The lists the grid reads (2026-10-07)
 
 Two plain-text routes give the lists `tools/grid_access.sh` in `hpcworker` applies on the grid, and
-`admin.mjs roster` and `admin.mjs readers` print their bodies byte for byte. Same address, token, origin
-and CORS as above; a wrong or missing token is the JSON 401 and another site's page the JSON 403 of every
-admin route; a POST to either is an unknown write (404).
+`admin.mjs roster` and `admin.mjs readers` print their bodies byte for byte. Same address, origin and CORS
+as above; the token is the admin token or the grid token (below), and the two get the same answers. A
+wrong or missing token is the JSON 401 and another site's page the JSON 403 of every admin route; a POST
+to either is an unknown write (404) with the admin token, and the 401 with the grid token.
 
 | Route | Body (`text/plain; charset=utf-8`, `cache-control: no-store`) |
 |---|---|
@@ -389,6 +391,32 @@ A service deployed before these routes answers them 404 (as any unknown admin ro
 says to deploy and ends with exit 1, as it does on any answer that is not 200 plain text (a sign-in page
 in front of the service, say), and prints nothing on stdout, so the grid tool refuses rather than taking
 anyone's entries away. Deploy the service (both names) before a grid tool that reads them.
+
+**The grid token** (2026-10-07). The job on the grid reads the two lists with a token of its own, so the
+admin token never sits on the cluster: `tools/grid_access.sh` reads the file `grid_token` in its vendor
+folder, and `admin_token` only when there is none. The maintainer makes the grid token on the admin page,
+which downloads it as that file. It reads `GET /admin/roster.txt` and `GET /admin/readers.txt` and
+nothing else: on every other admin route, the three below included, it is answered exactly as a wrong
+admin token (401, `{"error":"admin token missing or wrong"}`), and from another site's page the 403 comes
+first, as for any token. The service keeps only its SHA-256 (KV `ACCESS`, `grid-token`, with `made_at`),
+compares the hash of the bearer value with it over every character, and shows the token once, in the
+answer that makes it.
+
+| Route (admin token only) | Body | Answer |
+|---|---|---|
+| **`POST /admin/grid-token`** | `{}` (a JSON object, as every admin write) | `{ "token": "<64 lower-case hexadecimal characters>", "made_at": "<ISO time>", "replaced": true\|false }`, `cache-control: no-store`. A new token replaces any earlier one (`replaced: true`), which reads nothing from then on. The page saves `token` as the file `grid_token`; a lost token is not recovered, only replaced |
+| **`POST /admin/grid-token-withdraw`** | `{}` | `{ "withdrawn": true\|false }` (`false` when there was none): the lists answer the token 401 from then on |
+| **`GET /admin/grid-token`** | | `{ "made_at": "<ISO time>"\|null, "last_read_at": "<ISO time>"\|null }`: when the token was made and when it last read a list, `null` when there is none or it has not read one since it was made; never the token or its hash |
+
+**When a change takes hold.** KV is eventually consistent: a new token, or a withdrawal, holds at once at
+the Cloudflare location that made it, and other locations may take the old token, or refuse the new one,
+for about a minute. A grid run in that minute may be refused; it then changes nothing and works at its
+next run.
+**The last read** is recorded when the grid token reads a list and the last record is absent or more than
+an hour old, so the lists' readers cost about 24 KV writes a day; the write is handed to `ctx.waitUntil`
+after the answer, and a failed write never fails the read. It is kept under a key of its own
+(`grid-token-read`), tied to its token by the first 16 characters of the hash, so a late write from a
+location still holding a replaced or withdrawn record never brings that token back.
 
 ## The proofs, as they were recorded
 
