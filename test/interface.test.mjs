@@ -142,6 +142,11 @@ test('the check refuses what it should: a pass would mean nothing otherwise', ()
   assert.ok(trialKey.errors({ ...payload, domain: 'wayne.edu' }).length, 'a key with a domain');
   assert.ok(trialKey.errors({ ...payload, edition: 'site' }).length, 'a site key');
   assert.ok(checker('admin.schema.json#/$defs/seat.answer').errors({ accessId: 'ab1234', any_installation: false, seat: { install_short: '0123456789abcdef0123456789abcdef', first_seen: 'x', last_seen: 'x' }, conflict: null }).length, 'a fingerprint, never the identifier');
+  // the grid token's status: the two dates, never the token or its hash under the names the service has for them
+  const gridStatus = checker('admin.schema.json#/$defs/grid-token.status.answer');
+  const dates = { made_at: '2026-10-07T12:00:00.000Z', last_read_at: null };
+  assert.deepEqual(gridStatus.errors(dates), []);
+  for (const name of ['token', 'sha256', 'sha256_head', 'hash']) assert.ok(gridStatus.errors({ ...dates, [name]: '0123456789abcdef' }).length, name);
   assert.equal(listErrors('roster', 'ab1234\nAB1234\n').length > 0, true);
   assert.equal(listErrors('roster', 'ab1234').length > 0, true, 'every line ends with a newline');
   assert.equal(listErrors('roster', '\n').length > 0, true, 'an empty list is an empty body');

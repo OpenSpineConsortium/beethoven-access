@@ -1615,7 +1615,7 @@
   },
   "grid-token.status.answer": {
    "type": "object",
-   "description": "made_at: when the grid token was made, null when there is none; last_read_at: when it last read a list, recorded once an hour at most, null when it has not read one since it was made. Never the token or its hash.",
+   "description": "made_at: when the grid token was made, null when there is none; last_read_at: when it last read a list, recorded once an hour at most, null when it has not read one since it was made. Never the token or its hash, under any name; the fields token, sha256, sha256_head and hash are refused here by name.",
    "required": [
     "made_at",
     "last_read_at"
@@ -1638,6 +1638,16 @@
      {
       "required": [
        "sha256"
+      ]
+     },
+     {
+      "required": [
+       "sha256_head"
+      ]
+     },
+     {
+      "required": [
+       "hash"
       ]
      }
     ]

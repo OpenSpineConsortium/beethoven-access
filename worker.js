@@ -301,26 +301,41 @@ async function gridTokenMatches(given, rec) {
   return diff === 0;
 }
 
-// May this bearer value read the grid's lists as the grid token? A failed stamp never fails the read.
+// one of the two grid-token records; a value that is not JSON is no record (a read writes a good one again)
+async function gridRecord(env, key) {
+  const text = await env.ACCESS.get(key);
+  if (text === null) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+// May this bearer value read the grid's lists as the grid token? Only the token's record is read before the
+// answer, so a wrong value costs one KV read; the last read is looked up and written after it, and nothing
+// in that, a failed or unreadable lookup included, can fail or hold up the read.
 async function gridTokenReads(env, ctx, given) {
   if (!given) return false;
-  const [rec, read] = await Promise.all([env.ACCESS.get(GRID_TOKEN_KEY, 'json'), env.ACCESS.get(GRID_READ_KEY, 'json')]);
+  const rec = await gridRecord(env, GRID_TOKEN_KEY);
   if (!(await gridTokenMatches(given, rec))) return false;
-  const last = readOf(rec, read) ? Date.parse(read.last_read_at) : NaN;
   const nowMs = Date.now();
-  if (Number.isNaN(last) || nowMs - last > GRID_READ_EVERY_MS) {
-    const stamp = Promise.resolve()
-      .then(() => env.ACCESS.put(GRID_READ_KEY, JSON.stringify({ sha256_head: rec.sha256.slice(0, 16), last_read_at: new Date(nowMs).toISOString() })))
-      .catch((e) => console.error(`grid token: the last read was not recorded (${(e && e.name) || 'error'})`));
-    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(stamp);
-    else await stamp;
-  }
+  const stamp = Promise.resolve()
+    .then(() => gridRecord(env, GRID_READ_KEY))
+    .then((read) => {
+      const last = readOf(rec, read) ? Date.parse(read.last_read_at) : NaN;
+      if (Number.isNaN(last) || nowMs - last > GRID_READ_EVERY_MS) return env.ACCESS.put(GRID_READ_KEY, JSON.stringify({ sha256_head: rec.sha256.slice(0, 16), last_read_at: new Date(nowMs).toISOString() }));
+    })
+    .catch((e) => console.error(`grid token: the last read was not recorded (${(e && e.name) || 'error'})`));
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(stamp);
+  else await stamp;
   return true;
 }
 
-// what the admin page shows of the grid token: when it was made and last read, never the hash
+// what the admin page shows of the grid token: when it was made and last read, never the hash. A KV
+// failure here is the page's error, never a plausible "not read yet".
 async function gridTokenStatus(env) {
-  const [rec, read] = await Promise.all([env.ACCESS.get(GRID_TOKEN_KEY, 'json'), env.ACCESS.get(GRID_READ_KEY, 'json')]);
+  const [rec, read] = await Promise.all([gridRecord(env, GRID_TOKEN_KEY), gridRecord(env, GRID_READ_KEY)]);
   if (!rec || typeof rec.sha256 !== 'string') return { made_at: null, last_read_at: null };
   return { made_at: rec.made_at || null, last_read_at: readOf(rec, read) ? read.last_read_at || null : null };
 }
@@ -1785,9 +1800,16 @@ async function admin(request, env, url, ctx) {
     // (KV). The token is in this answer and nowhere else: the page saves it as the file grid_token
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const replaced = (await env.ACCESS.get(GRID_TOKEN_KEY)) !== null;
-    await env.ACCESS.put(GRID_TOKEN_KEY, JSON.stringify({ sha256: hex(await sha256(token)), made_at: now }));
+    // the old token's last read goes first, so a failure here replaces nothing and the old token still reads
     await env.ACCESS.delete(GRID_READ_KEY);
-    await audit(env, 'grid-token', null, { replaced });
+    await env.ACCESS.put(GRID_TOKEN_KEY, JSON.stringify({ sha256: hex(await sha256(token)), made_at: now }));
+    // From here the old token reads nothing, so the new one must reach the page: a failed audit line is
+    // logged, never answered as a failure that would leave no token anywhere.
+    try {
+      await audit(env, 'grid-token', null, { replaced });
+    } catch (e) {
+      console.error(`grid token: made, but its audit line was not written (${(e && e.name) || 'error'})`);
+    }
     return reply(200, { token, made_at: now, replaced });
   }
   if (route === 'grid-token-withdraw') {
