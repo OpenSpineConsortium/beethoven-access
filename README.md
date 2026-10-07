@@ -675,3 +675,10 @@ already read, `storage-add` and `storage-remove`, said in words in the e-mail an
 `<AccessID> .` by `readers`. `test/vendor.test.mjs` checks the order in which the vendor folder is found, and
 `test/trial-key.test.mjs` what `trial-key.mjs` gives `deploy.sh` (the key the Worker imports, an encrypted
 one opened with the passphrase variable, nothing printed when it cannot be read).
+
+`test/interface.test.mjs` holds the published contract (`interface/`, its README says what it is) to the
+Worker: `routes.json` names every route `worker.js` and `storage.js` answer, and the vectors are what the
+Worker answers now, each passing its route's schemas and line grammar. After a change of what the Worker
+answers, `node test/vectors.mjs --write` rewrites them (`node test/vectors.mjs` names the ones that
+moved); the test fails until it is run. `test/fake-kv.mjs` (the in-memory KV), `test/schema.mjs` (the
+schema check) and `test/vectors.mjs` are helpers, not tests.

@@ -1,0 +1,20 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/report.answer.schema.json",
+ "title": "POST /report: the answer (202)",
+ "description": "Filed, as a new issue or a count on the one already filed for the same signature.",
+ "type": "object",
+ "required": [
+  "ok",
+  "issue"
+ ],
+ "properties": {
+  "ok": {
+   "const": true
+  },
+  "issue": {
+   "type": "integer",
+   "minimum": 1
+  }
+ }
+}

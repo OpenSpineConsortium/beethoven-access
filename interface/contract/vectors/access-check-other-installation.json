@@ -1,0 +1,35 @@
+{
+ "vector": "access-check-other-installation",
+ "route": "/access_check",
+ "summary": "An approved account from a second installation: no, reason other_installation",
+ "request": {
+  "method": "POST",
+  "path": "/access_check",
+  "headers": {
+   "origin": "chrome-extension://abcdefghijklmnopabcdefghijklmnop",
+   "content-type": "text/plain;charset=UTF-8"
+  },
+  "body": {
+   "v": 1,
+   "access_id": "ab1234",
+   "portal": "ondemand.grid.wayne.edu",
+   "product": "bridge",
+   "version": "15.0.0",
+   "install_id": "fedcba9876543210fedcba9876543210"
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-origin": "*",
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "approved": false,
+   "access_id": "ab1234",
+   "reason": "other_installation",
+   "requestPage": "https://openspineconsortium.com/beethoven/request.html"
+  }
+ }
+}

@@ -1,0 +1,32 @@
+{
+ "vector": "request-other-origin",
+ "route": "/request",
+ "summary": "A page of another site: 403",
+ "request": {
+  "method": "POST",
+  "path": "/request",
+  "headers": {
+   "origin": "https://example.com",
+   "content-type": "application/json"
+  },
+  "body": {
+   "v": 2,
+   "access_id": "cd5678",
+   "name": "C. D.",
+   "email": "cd5678@wayne.edu",
+   "google_account": "c.d.student@gmail.com",
+   "purpose": "spine segmentation for my thesis",
+   "product": "bridge"
+  }
+ },
+ "answer": {
+  "status": 403,
+  "headers": {
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "error": "requests are taken from the request page at https://openspineconsortium.com only"
+  }
+ }
+}

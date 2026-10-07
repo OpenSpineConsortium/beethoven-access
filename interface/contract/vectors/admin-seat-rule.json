@@ -1,0 +1,36 @@
+{
+ "vector": "admin-seat-rule",
+ "route": "/admin/seat-rule",
+ "summary": "The store reviewers' mock account",
+ "request": {
+  "method": "POST",
+  "path": "/admin/seat-rule",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "authorization": "Bearer <ADMIN_TOKEN>",
+   "content-type": "application/json"
+  },
+  "body": {
+   "accessId": "st1234",
+   "any": true
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "status": "seat-rule",
+   "accessId": "st1234",
+   "any_installation": true
+  }
+ }
+}

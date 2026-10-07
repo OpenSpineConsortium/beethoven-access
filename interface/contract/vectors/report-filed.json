@@ -1,0 +1,48 @@
+{
+ "vector": "report-filed",
+ "route": "/report",
+ "summary": "An error report from an installation that allows them: filed as an issue",
+ "request": {
+  "method": "POST",
+  "path": "/report",
+  "headers": {
+   "content-type": "application/json"
+  },
+  "body": {
+   "v": 1,
+   "install_id": "01234567-89ab-cdef-0123-456789abcdef",
+   "version": "5.0.0",
+   "grid_scripts_version": "9",
+   "vscode": "1.104.0",
+   "os": "win32 10.0.26100",
+   "arch": "x64",
+   "when": "2026-10-07T11:59:00Z",
+   "root_causes": [
+    "ssh-key"
+   ],
+   "nodes": [
+    {
+     "id": "ssh-key",
+     "status": "fail",
+     "ms": 12,
+     "detail": "no key",
+     "root_cause": "ssh-key",
+     "repair": "make a key"
+    }
+   ],
+   "errors": [],
+   "signature": "0123456789abcdef"
+  }
+ },
+ "answer": {
+  "status": 202,
+  "headers": {
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "ok": true,
+   "issue": 1
+  }
+ }
+}

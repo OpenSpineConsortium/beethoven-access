@@ -19,6 +19,7 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import worker from '../worker.js';
 import { readFolders, covered, union } from '../storage.js';
+import { FakeKV } from './fake-kv.mjs';
 
 // this repository's root: wrangler.toml, deploy.sh and admin.mjs are read or run from there
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -107,49 +108,6 @@ const L = (() => {
 })();
 const SITE = 'https://openspineconsortium.com';
 const ADMIN = { authorization: 'Bearer secret-admin-token' };
-
-// Cloudflare KV, in memory: get/put/delete and a paged list (two keys a page, to exercise the cursor);
-// the expirationTtl of each put is kept in ttl so a test can read it (nothing expires on its own). A
-// string is kept as a string; an ArrayBuffer or a typed array as a copy of its bytes, as KV keeps binary
-// values, and read back as text, JSON or an ArrayBuffer; the metadata of a put is kept beside the value.
-class FakeKV {
-  constructor() {
-    this.m = new Map();
-    this.ttl = new Map();
-    this.meta = new Map();
-  }
-  async get(k, type) {
-    const v = this.m.get(k);
-    if (v === undefined) return null;
-    const t = type && typeof type === 'object' ? type.type : type;
-    const text = v instanceof Uint8Array ? new TextDecoder().decode(v) : v;
-    if (t === 'arrayBuffer') return v instanceof Uint8Array ? v.slice().buffer : new TextEncoder().encode(v).buffer;
-    return t === 'json' ? JSON.parse(text) : text;
-  }
-  async getWithMetadata(k, type) {
-    return { value: await this.get(k, type), metadata: this.meta.has(k) ? this.meta.get(k) : null };
-  }
-  async put(k, v, opts) {
-    if (v instanceof ArrayBuffer) this.m.set(k, new Uint8Array(v.slice(0)));
-    else if (ArrayBuffer.isView(v)) this.m.set(k, new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)));
-    else this.m.set(k, String(v));
-    this.ttl.set(k, opts && opts.expirationTtl);
-    if (opts && opts.metadata !== undefined) this.meta.set(k, JSON.parse(JSON.stringify(opts.metadata)));
-    else this.meta.delete(k);
-  }
-  async delete(k) {
-    this.m.delete(k);
-    this.ttl.delete(k);
-    this.meta.delete(k);
-  }
-  async list({ prefix = '', cursor } = {}) {
-    const all = [...this.m.keys()].filter((k) => k.startsWith(prefix)).sort();
-    const start = Number(cursor || 0);
-    const keys = all.slice(start, start + 2).map((name) => ({ name }));
-    const done = start + 2 >= all.length;
-    return { keys, list_complete: done, cursor: done ? undefined : String(start + 2) };
-  }
-}
 
 function makeEnv(over = {}) {
   return { ACCESS: new FakeKV(), TRIALS: new FakeKV(), REPORTS: new FakeKV(), TRIAL_KEY_PKCS8_B64: PKCS8_B64, TRIAL_KID: 'test', TRIAL_DAYS: '365', ALLOWED_DOMAINS: 'wayne.edu', SITE_ORIGIN: SITE, ADMIN_TOKEN: 'secret-admin-token', IP_SALT: 'a-salt', GITHUB_TOKEN: 'gh-test', GITHUB_REPO: 'example/beethoven-vscode', ...over };

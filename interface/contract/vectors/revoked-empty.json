@@ -1,0 +1,18 @@
+{
+ "vector": "revoked-empty",
+ "route": "/revoked",
+ "summary": "Nothing withdrawn yet: an empty body",
+ "request": {
+  "method": "GET",
+  "path": "/revoked",
+  "headers": {}
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "cache-control": "max-age=300",
+   "content-type": "text/plain"
+  },
+  "body": ""
+ }
+}

@@ -1,0 +1,26 @@
+{
+ "vector": "admin-roster-txt-empty",
+ "route": "/admin/roster.txt",
+ "summary": "Nobody approved: an empty body, never a blank line",
+ "request": {
+  "method": "GET",
+  "path": "/admin/roster.txt",
+  "headers": {
+   "authorization": "Bearer <ADMIN_TOKEN>"
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "text/plain; charset=utf-8",
+   "vary": "origin"
+  },
+  "body": ""
+ }
+}

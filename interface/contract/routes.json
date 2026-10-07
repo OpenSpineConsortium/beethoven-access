@@ -1,0 +1,1105 @@
+{
+ "format": 1,
+ "title": "The access service's routes",
+ "description": "Every route the Worker answers, at either address (base): who calls it, how it is authorised, and the schema of each request and answer, by status. type is the answer's content-type (a client compares up to the first ';' when the value has none). A schema is named as a file of this folder, or a definition in one (<file>#/$defs/<name>). An answer status not listed under a method is one of its auth's answers, or of '*' (every other method). A reader ignores a field it does not know. vectors/ holds the real Worker's answers, each naming its path here. ACCESS_CHECK.md and README.md (Routes) say the same in words.",
+ "base": [
+  "https://beethoven-access.openspineconsortium.workers.dev",
+  "https://ashley-service.openspineconsortium.workers.dev"
+ ],
+ "auth": {
+  "none": {
+   "description": "no credential"
+  },
+  "admin-token": {
+   "description": "authorization: Bearer <ADMIN_TOKEN>, the maintainer's token, read from a mode-0600 file and sent in a header, never on a command line (curl -H @file). A browser page must come from the website (SITE_ORIGIN); a program sends no Origin. CORS for the website, credentials allowed (a Cloudflare Access session in front of /admin/* rides along).",
+   "answers": {
+    "401": {
+     "type": "application/json",
+     "schema": "error.schema.json"
+    },
+    "403": {
+     "type": "application/json",
+     "schema": "error.schema.json"
+    }
+   }
+  },
+  "microsoft-sign-in": {
+   "description": "authorization: Bearer <the person's Microsoft sign-in token>, which the service uses once, to ask Microsoft Graph who the person is; never stored or logged.",
+   "answers": {
+    "401": {
+     "type": "application/json",
+     "schema": "error.schema.json"
+    },
+    "403": {
+     "type": "application/json",
+     "schema": "error.schema.json"
+    },
+    "422": {
+     "type": "application/json",
+     "schema": "error.schema.json"
+    },
+    "429": {
+     "type": "application/json",
+     "schema": "error.schema.json"
+    }
+   }
+  },
+  "link": {
+   "description": "a signed one-use link from an e-mail (?t=<token>): GET shows one question and one button, the button POSTs the answer"
+  }
+ },
+ "routes": [
+  {
+   "path": "/health",
+   "for": "programs",
+   "callers": [
+    "anyone"
+   ],
+   "auth": "none",
+   "summary": "the service is up; deploy.yml reads it after each deploy",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "health.answer.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/access_check",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/beethoven-extension"
+   ],
+   "auth": "none",
+   "origin": "any (CORS *)",
+   "summary": "is this one account approved, on this installation? Yes or no, never the list. 120 checks per account and 2000 per connection a day",
+   "methods": {
+    "POST": {
+     "request": {
+      "type": [
+       "text/plain",
+       "application/json"
+      ],
+      "max_bytes": 8192,
+      "schema": "access-check.request.schema.json"
+     },
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "access-check.answer.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "413": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "429": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "503": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     }
+    },
+    "OPTIONS": {
+     "answers": {
+      "204": {
+       "note": "a preflight: access-control-allow-methods POST, OPTIONS; allow-headers content-type; max-age 600"
+      }
+     }
+    },
+    "*": {
+     "answers": {
+      "405": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/trial",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/beethoven-vscode"
+   ],
+   "auth": "microsoft-sign-in",
+   "summary": "a signed trial key for a signed-in person approved for Beethoven; three a day at most",
+   "methods": {
+    "POST": {
+     "request": {
+      "type": "application/json",
+      "schema": "trial.request.schema.json"
+     },
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "trial.answer.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/revoked",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/beethoven-vscode"
+   ],
+   "auth": "none",
+   "summary": "the signed revocation list (cached five minutes), read daily by every installation of Beethoven for VS Code and its grid scripts",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "text/plain",
+       "text": "signed",
+       "payload": "revocation-list.payload.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/report",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/beethoven-vscode"
+   ],
+   "auth": "none",
+   "summary": "an error report from an installation that allows them, filed as an issue",
+   "methods": {
+    "POST": {
+     "request": {
+      "type": "application/json",
+      "max_bytes": 65536,
+      "schema": "report.request.schema.json"
+     },
+     "answers": {
+      "202": {
+       "type": "application/json",
+       "schema": "report.answer.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "413": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "429": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "502": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/allowlist",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/beethoven-vscode"
+   ],
+   "auth": "none",
+   "origin": "any (CORS *)",
+   "summary": "nobody since 2026-10-01: an empty list in the old shape, for a VS Code build that still has the address",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "allowlist.answer.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/request",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io"
+   ],
+   "auth": "none",
+   "origin": "the website (SITE_ORIGIN) or none",
+   "summary": "the request page: a student asks for access",
+   "methods": {
+    "POST": {
+     "request": {
+      "type": "application/json",
+      "max_bytes": 7356416,
+      "schema": "request.request.schema.json"
+     },
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "request.answer.schema.json"
+      },
+      "202": {
+       "type": "application/json",
+       "schema": "request.answer.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "413": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "429": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "502": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "503": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     }
+    },
+    "OPTIONS": {
+     "answers": {
+      "204": {
+       "note": "a preflight from the website"
+      }
+     }
+    },
+    "*": {
+     "answers": {
+      "403": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "405": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/storage_request",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io"
+   ],
+   "auth": "none",
+   "origin": "the website (SITE_ORIGIN) or none",
+   "summary": "the lab storage page: someone asks to read named folders of the lab's storage",
+   "methods": {
+    "POST": {
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "storage-request.request.schema.json"
+     },
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "storage-request.answer.schema.json"
+      },
+      "202": {
+       "type": "application/json",
+       "schema": "storage-request.answer.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "413": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "429": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "503": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     }
+    },
+    "OPTIONS": {
+     "answers": {
+      "204": {
+       "note": "a preflight from the website"
+      }
+     }
+    },
+    "*": {
+     "answers": {
+      "403": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "405": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/decide",
+   "for": "people",
+   "callers": [
+    "the maintainer, from the links in the e-mails"
+   ],
+   "auth": "link",
+   "summary": "Approve for Beethoven, Lab membership only, Deny, Move the approval, Withdraw approval, Done, invited",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "text/html"
+      }
+     }
+    },
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "text/html"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/confirm",
+   "for": "people",
+   "callers": [
+    "the student, from the Confirm it is you e-mail"
+   ],
+   "auth": "link",
+   "summary": "the student confirms their request (MAIL_STUDENTS \"1\")",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "text/html"
+      }
+     }
+    },
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "text/html"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/cv",
+   "for": "people",
+   "callers": [
+    "the maintainer, from the request e-mail"
+   ],
+   "auth": "link",
+   "summary": "the CV sent with a request, once",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "text/html"
+      }
+     }
+    },
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "the file: application/pdf or a Word type"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/storage_decide",
+   "for": "people",
+   "callers": [
+    "the maintainer, from the links in a lab storage e-mail"
+   ],
+   "auth": "link",
+   "summary": "Approve read access, Deny",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "text/html"
+      }
+     }
+    },
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "text/html"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/*",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "every admin route: the preflight, and a write the service does not know",
+   "methods": {
+    "OPTIONS": {
+     "answers": {
+      "204": {
+       "note": "a preflight from the website; answered before the token is asked for"
+      }
+     }
+    },
+    "POST": {
+     "answers": {
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/list",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "requests, approvals, denials, revoked key ids, access checks, seats and refusals (the admin page's list)",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/list.answer"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/allowlist",
+   "for": "programs",
+   "callers": [
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "the approved list as JSON: the grant extension, sorted, without the store reviewers' mock account",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/allowlist.answer"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/roster.txt",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/hpcworker",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "the approved list as the grid reads it (lines.json, roster)",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "text/plain; charset=utf-8",
+       "text": "roster"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/readers.txt",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/hpcworker",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "the readers of lab storage as the grid reads them (lines.json, readers)",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "text/plain; charset=utf-8",
+       "text": "readers"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/storage-list",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "lab storage: requests, readers and denials",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/storage-list.answer"
+      }
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/add",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "an approval without a request, or an approval's name, e-mail, note and grants",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/add.answer"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/add.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/approve",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "approve a request: both grants, or the ones given; the answer's invite is the next step",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/approve.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/approve.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/deny",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "deny a request",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/deny.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "409": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/deny.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/invited",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "mark invited to the Google Group, or clear the mark",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/invited.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "409": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/invited.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/grant",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "set an approved person's grants exactly",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/grant.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/grant.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/seat-rule",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "the store reviewers' mock account (any: true), or an ordinary approval",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/seat-rule.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/seat-rule.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/seat",
+   "for": "programs",
+   "callers": [
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "the installation an account is bound to, by fingerprint, and its refusals",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/seat.answer"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/seat.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/reset-seat",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "clear the binding: the next installation to check gets the account",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/reset-seat.answer"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/reset-seat.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/remove",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "every record of the person; their keys go on the revocation list",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/remove.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/remove.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/revoke-lid",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/beethoven-vscode",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "withdraw key ids, several in one call (the VS Code edition's publish.sh)",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/revoke-lid.answer"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/revoke-lid.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/cv",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "the CV sent with the request",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "the file: application/pdf or a Word type, content-disposition attachment"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "500": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/cv.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/notify-test",
+   "for": "programs",
+   "callers": [
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "a test e-mail to the maintainer",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/notify-test.answer"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/notify-test.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/storage-add",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "a reader without a request, or a reader's folders set exactly",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/storage-add.answer"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/storage-add.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/storage-approve",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "approve a storage request: its folders, or the ones given",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/storage-approve.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/storage-approve.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/storage-deny",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "deny a storage request",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/storage-deny.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/storage-deny.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/storage-remove",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io",
+    "admin.mjs"
+   ],
+   "auth": "admin-token",
+   "summary": "take a reader off: their folders, a request and a denial",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/storage-remove.answer"
+      },
+      "404": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/storage-remove.request"
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,84 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/report.request.schema.json",
+ "title": "POST /report: the request",
+ "description": "An error report from a Beethoven for VS Code installation that allows them, 64 KB at most, ten per installation a day, nodes 200 at most. Every string is cleaned and cut short before it is filed; a field not named here is dropped.",
+ "type": "object",
+ "required": [
+  "v",
+  "install_id",
+  "version",
+  "nodes",
+  "signature"
+ ],
+ "properties": {
+  "v": {
+   "const": 1
+  },
+  "install_id": {
+   "type": "string",
+   "pattern": "^[0-9a-f-]{36}$"
+  },
+  "version": {
+   "type": "string"
+  },
+  "grid_scripts_version": {
+   "type": "string"
+  },
+  "vscode": {
+   "type": "string"
+  },
+  "os": {
+   "type": "string"
+  },
+  "arch": {
+   "type": "string"
+  },
+  "when": {
+   "type": "string"
+  },
+  "root_causes": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "nodes": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     },
+     "ms": {
+      "type": "number"
+     },
+     "detail": {
+      "type": "string"
+     },
+     "root_cause": {
+      "type": "string"
+     },
+     "repair": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "errors": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "signature": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{16}$",
+   "description": "the same failure from several installations or days is one issue with a count"
+  }
+ }
+}

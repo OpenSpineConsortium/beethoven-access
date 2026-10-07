@@ -1,0 +1,12 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/trial.request.schema.json",
+ "title": "POST /trial: the request",
+ "description": "The body is not read: the Microsoft sign-in token in the authorization header names the person. Beethoven for VS Code sends {\"product\":\"ashley\"}.",
+ "type": "object",
+ "properties": {
+  "product": {
+   "type": "string"
+  }
+ }
+}

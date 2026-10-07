@@ -1,0 +1,48 @@
+{
+ "format": 1,
+ "title": "The access service's plain-text answers",
+ "description": "The answers that are text, not JSON. A list is one item a line, each line ending with \\n (never \\r), and an empty list is an empty body, never a blank line. A signed text is one token, or an empty body. Patterns use only what JavaScript and Python regular expressions share. vectors/ holds what the real Worker answered.",
+ "texts": {
+  "roster": {
+   "route": "GET /admin/roster.txt",
+   "read_by": "hpcworker's tools/grid_access.sh, which keeps the named-user entries on the lab volume's root equal to it",
+   "line": "^[a-z]{2}[0-9]{4}$",
+   "rules": [
+    "one AccessID a line: the approvals with the grant extension, without the store reviewers' mock account",
+    "sorted, no repeats",
+    "the same AccessIDs as GET /admin/allowlist"
+   ]
+  },
+  "readers": {
+   "route": "GET /admin/readers.txt",
+   "read_by": "hpcworker's tools/grid_access.sh, which gives each reader the lab group's read on their folders",
+   "line": "^[a-z]{2}[0-9]{4} (\\.|[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*)$",
+   "max_line": 207,
+   "rules": [
+    "<AccessID> <folder>: one line per reader and folder, by AccessID and then folder, no repeats",
+    "a folder is under the lab storage's root, 200 characters at most; \".\" is the whole volume and then the reader's only line"
+   ]
+  },
+  "signed": {
+   "route": "GET /revoked",
+   "read_by": "Beethoven for VS Code and its grid scripts",
+   "token": "^(ASHLEYREV1|BEETHOVENREV1)\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{86}$",
+   "payload": "revocation-list.payload.schema.json",
+   "rules": [
+    "an empty body: nothing is withdrawn",
+    "else one token, <prefix>.<payload>.<signature>: the payload is base64url (no padding) of the JSON payload; the signature is base64url of the Ed25519 signature over the ASCII text <prefix>.<payload>, by the public key the payload's kid names",
+    "the prefix is ASHLEYREV1 while KEY_PREFIX is \"ashley\" in wrangler.toml, BEETHOVENREV1 after it is \"beethoven\"; a verifier takes both"
+   ]
+  },
+  "trial-key": {
+   "route": "POST /trial, the answer's key",
+   "read_by": "Beethoven for VS Code's licence verifier",
+   "token": "^(ASHLEY1|BEETHOVEN1)\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{86}$",
+   "payload": "trial-key.payload.schema.json",
+   "rules": [
+    "signed as the revocation list is, with the prefix ASHLEY1 or BEETHOVEN1 as KEY_PREFIX says",
+    "the key id of a real key is the vendor's trial key (\"trial\"); the vectors' is \"vectors\", whose public key is vectors/key.json and is trusted by no real verifier"
+   ]
+  }
+ }
+}

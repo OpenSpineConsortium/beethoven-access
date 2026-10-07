@@ -1,0 +1,20 @@
+{
+ "vector": "health",
+ "route": "/health",
+ "summary": "The health check deploy.yml reads after each deploy",
+ "request": {
+  "method": "GET",
+  "path": "/health",
+  "headers": {}
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "ok": true
+  }
+ }
+}

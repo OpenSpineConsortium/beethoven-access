@@ -1,0 +1,21 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/error.schema.json",
+ "title": "A refusal or an error",
+ "description": "Every answer that is not a success, on every route that answers JSON: a sentence a page may show after \"Not sent: \" or a program may log. /trial adds detail and, for a person not approved, request_page.",
+ "type": "object",
+ "required": [
+  "error"
+ ],
+ "properties": {
+  "error": {
+   "type": "string"
+  },
+  "detail": {
+   "type": "string"
+  },
+  "request_page": {
+   "$ref": "common.schema.json#/$defs/page"
+  }
+ }
+}

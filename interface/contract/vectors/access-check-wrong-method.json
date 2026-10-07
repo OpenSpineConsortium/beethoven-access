@@ -1,0 +1,23 @@
+{
+ "vector": "access-check-wrong-method",
+ "route": "/access_check",
+ "summary": "Any method but POST and OPTIONS: 405",
+ "request": {
+  "method": "GET",
+  "path": "/access_check",
+  "headers": {
+   "origin": "chrome-extension://abcdefghijklmnopabcdefghijklmnop"
+  }
+ },
+ "answer": {
+  "status": 405,
+  "headers": {
+   "access-control-allow-origin": "*",
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "error": "POST the check here"
+  }
+ }
+}

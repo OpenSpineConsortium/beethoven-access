@@ -1,0 +1,50 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/access-check.request.schema.json",
+ "title": "POST /access_check: the request",
+ "description": "The body, JSON, 8 KiB at most, sent as text/plain (so a browser sends no preflight) or application/json. The service trims and lower-cases access_id, portal, product and install_id before it checks them; the patterns are of that form. A field it does not know is ignored. ACCESS_CHECK.md, Request.",
+ "type": "object",
+ "required": [
+  "v",
+  "access_id",
+  "portal",
+  "product",
+  "version"
+ ],
+ "properties": {
+  "v": {
+   "const": 1
+  },
+  "access_id": {
+   "type": "string",
+   "pattern": "^[a-z0-9][a-z0-9._@-]{0,63}$",
+   "description": "the account name the portal's dashboard shows, never a typed one"
+  },
+  "portal": {
+   "type": "string",
+   "pattern": "^(?=.{1,253}(:|$))[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?$",
+   "description": "the portal's hostname, a :port allowed; not a URL"
+  },
+  "product": {
+   "type": "string",
+   "pattern": "^[a-z][a-z0-9-]{0,31}$",
+   "description": "bridge from every Beethoven build (beethoven is the same product); another short name is recorded under its own name"
+  },
+  "version": {
+   "type": "string",
+   "pattern": "^[0-9A-Za-z.+-]{1,40}$"
+  },
+  "install_id": {
+   "anyOf": [
+    {
+     "type": "string",
+     "pattern": "^([0-9a-f][0-9a-f-]{14,62}[0-9a-f])?$"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "description": "Beethoven 8.0.0 on: the random identifier made once per installation (32 hexadecimal characters); absent, null or empty from a build before"
+  }
+ }
+}

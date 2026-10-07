@@ -1,0 +1,31 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/OpenSpineConsortium/beethoven-access/interface/contract/revocation-list.payload.schema.json",
+ "title": "The payload of the revocation list",
+ "description": "What GET /revoked carries, as JSON inside the signed token (lines.json, signed): every licence id withdrawn, sorted. An empty body means nothing is withdrawn.",
+ "type": "object",
+ "required": [
+  "v",
+  "kid",
+  "issued",
+  "revoked"
+ ],
+ "properties": {
+  "v": {
+   "const": 1
+  },
+  "kid": {
+   "type": "string"
+  },
+  "issued": {
+   "type": "integer",
+   "minimum": 0
+  },
+  "revoked": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/lid"
+   }
+  }
+ }
+}

@@ -1,0 +1,119 @@
+{
+ "vector": "admin-list",
+ "route": "/admin/list",
+ "summary": "The admin page's list: one request waiting for its mailbox, one approval bound to an installation, one denial",
+ "request": {
+  "method": "GET",
+  "path": "/admin/list",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "authorization": "Bearer <ADMIN_TOKEN>"
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "now": "2026-10-07T12:00:00.000Z",
+   "group": {
+    "name": "Beethoven-users",
+    "members_url": "https://groups.google.com/g/beethoven-users/members",
+    "mode": "manual"
+   },
+   "pending": [
+    {
+     "accessId": "cd5678",
+     "name": "C. D.",
+     "email": "cd5678@wayne.edu",
+     "note": "spine segmentation for my thesis",
+     "google_account": "c.d.student@gmail.com",
+     "asked_from": "Beethoven",
+     "requested_at": "2026-10-07T12:00:00.000Z",
+     "submitted_at": "2026-10-07T12:00:00.000Z",
+     "v": 2,
+     "ref": "n_Z5MWRDtOa-EpUCZeR2lg",
+     "mailbox": "waiting",
+     "expires_at": "2026-10-14T12:00:00.000Z",
+     "stage": "unconfirmed",
+     "age_hours": 0
+    }
+   ],
+   "approved": [
+    {
+     "accessId": "ab1234",
+     "name": "A. Student",
+     "email": "ab1234@wayne.edu",
+     "note": "",
+     "approved_at": "2026-10-07T12:00:00.000Z",
+     "by": "admin",
+     "lids": [],
+     "grants": [
+      "extension",
+      "lab"
+     ],
+     "stage": "installed",
+     "installed_at": "2026-10-07T12:00:00.000Z",
+     "seat": {
+      "bound": true,
+      "first_seen": "2026-10-07T12:00:00.000Z",
+      "last_seen": "2026-10-07T12:00:00.000Z",
+      "product": "bridge",
+      "version": "15.0.0"
+     },
+     "conflicts": 0
+    }
+   ],
+   "denied": [
+    {
+     "accessId": "ef0001",
+     "name": "E. F.",
+     "email": "ef0001@wayne.edu",
+     "note": "spine segmentation for my thesis",
+     "requested_at": "2026-10-07T12:00:00.000Z",
+     "google_account": "e.f.student@gmail.com",
+     "submitted_at": "2026-10-07T12:00:00.000Z",
+     "mailbox": "waiting",
+     "ref": "X62LgZUanwDmlieUwOw4bQ",
+     "denied_at": "2026-10-07T12:00:00.000Z",
+     "decided_at": "2026-10-07T12:00:00.000Z",
+     "decision": "deny",
+     "by": "admin",
+     "reason": "not in the lab"
+    }
+   ],
+   "revoked": [],
+   "checks": [
+    {
+     "access_id": "ab1234",
+     "product": "bridge",
+     "portal": "ondemand.grid.wayne.edu",
+     "version": "15.0.0",
+     "first_seen": "2026-10-07T12:00:00.000Z",
+     "last_seen": "2026-10-07T12:00:00.000Z",
+     "checks": 1,
+     "approved": true,
+     "ip_hash": "c681490be4010ec34f080e0a5fdfa9b4"
+    }
+   ],
+   "seats": [
+    {
+     "accessId": "ab1234",
+     "first_seen": "2026-10-07T12:00:00.000Z",
+     "last_seen": "2026-10-07T12:00:00.000Z",
+     "product": "bridge",
+     "version": "15.0.0"
+    }
+   ],
+   "conflicts": []
+  }
+ }
+}

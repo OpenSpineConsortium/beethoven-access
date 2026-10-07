@@ -1,0 +1,49 @@
+{
+ "vector": "admin-storage-add",
+ "route": "/admin/storage-add",
+ "summary": "A reader without a request",
+ "request": {
+  "method": "POST",
+  "path": "/admin/storage-add",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "authorization": "Bearer <ADMIN_TOKEN>",
+   "content-type": "application/json"
+  },
+  "body": {
+   "accessId": "zq0006",
+   "folders": [
+    "/rs/rs_grp_oschome/"
+   ]
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "status": "approved",
+   "accessId": "zq0006",
+   "record": {
+    "name": "",
+    "email": "zq0006@wayne.edu",
+    "note": "",
+    "folders": [
+     "."
+    ],
+    "approved_at": "2026-10-07T12:00:00.000Z",
+    "decided_at": "2026-10-07T12:00:00.000Z",
+    "decision": "add",
+    "by": "admin"
+   }
+  }
+ }
+}

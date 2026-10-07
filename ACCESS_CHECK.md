@@ -379,7 +379,8 @@ The grammar, which `hpcworker`'s tool checks again on its side: every line ends 
 `\r`), and an empty list is an empty body, never a blank line. A roster line is an AccessID, two lower-case
 letters and four digits (`^[a-z]{2}[0-9]{4}$`). A readers line is an AccessID, one space and a folder as
 `storage.js` stores it: `.`, or parts of letters, digits, dots, dashes and underscores, each starting with
-a letter, a digit or an underscore, joined by `/`, 200 characters at most.
+a letter, a digit or an underscore, joined by `/`, 200 characters at most. The published contract has
+both grammars (`interface/contract/lines.json`) and answers the real Worker gave (`vectors/`).
 
 A service deployed before these routes answers them 404 (as any unknown admin route); `admin.mjs` then
 says to deploy and ends with exit 1, as it does on any answer that is not 200 plain text (a sign-in page

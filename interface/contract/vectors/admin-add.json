@@ -1,0 +1,48 @@
+{
+ "vector": "admin-add",
+ "route": "/admin/add",
+ "summary": "An approval without a request",
+ "request": {
+  "method": "POST",
+  "path": "/admin/add",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "authorization": "Bearer <ADMIN_TOKEN>",
+   "content-type": "application/json"
+  },
+  "body": {
+   "accessId": "ab1234",
+   "name": "A. Student",
+   "note": "added by hand"
+  }
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "status": "approved",
+   "accessId": "ab1234",
+   "record": {
+    "name": "A. Student",
+    "email": "ab1234@wayne.edu",
+    "note": "added by hand",
+    "approved_at": "2026-10-07T12:00:00.000Z",
+    "by": "admin",
+    "lids": [],
+    "grants": [
+     "extension",
+     "lab"
+    ]
+   }
+  }
+ }
+}

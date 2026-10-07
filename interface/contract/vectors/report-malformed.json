@@ -1,0 +1,25 @@
+{
+ "vector": "report-malformed",
+ "route": "/report",
+ "summary": "Not a report: 400",
+ "request": {
+  "method": "POST",
+  "path": "/report",
+  "headers": {
+   "content-type": "application/json"
+  },
+  "body": {
+   "v": 1
+  }
+ },
+ "answer": {
+  "status": 400,
+  "headers": {
+   "cache-control": "no-store",
+   "content-type": "application/json"
+  },
+  "body": {
+   "error": "not a Beethoven report"
+  }
+ }
+}
