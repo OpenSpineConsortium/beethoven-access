@@ -2,7 +2,7 @@
  "format": 1,
  "name": "beethoven-access",
  "repository": "OpenSpineConsortium/beethoven-access",
- "summary": "Beethoven's access service, a Cloudflare Worker: the approved list and the access check, trial keys and the revocation list for Beethoven for VS Code, the request and lab storage pages' forms, the admin routes, and the two lists the grid applies.",
+ "summary": "Beethoven's access service, a Cloudflare Worker: the approved list and the access check, trial keys and the revocation list for Beethoven for VS Code, the request and lab storage pages' forms, the admin routes, and the two lists the grid applies, read with the admin token or the grid token, which reads them and nothing else.",
  "standard": "https://github.com/OpenSpineConsortium/beethoven/blob/main/INTERFACES.md",
  "exports": [
   {

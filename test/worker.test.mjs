@@ -221,9 +221,10 @@ test('D5: GET /allowlist publishes no AccessID; the approved list is the maintai
   assert.equal((await call(env, 'GET', '/admin/allowlist', { headers: ADMIN, origin: 'https://evil.example' }).then(asJson)).status, 403);
 });
 
-// The two lists hpcworker's tools/grid_access.sh applies, as plain text behind the admin token: one AccessID a
-// line (the same AccessIDs as /admin/allowlist), and one "<AccessID> <folder>" a line for the readers.
-test('GET /admin/roster.txt and /admin/readers.txt: the lists the grid reads, as plain text, for the maintainer only', async () => {
+// The two lists hpcworker's tools/grid_access.sh applies, as plain text behind the admin token (or the grid
+// token, below): one AccessID a line (the same AccessIDs as /admin/allowlist), and one "<AccessID> <folder>" a
+// line for the readers.
+test('GET /admin/roster.txt and /admin/readers.txt: the lists the grid reads, as plain text, behind the admin token', async () => {
   const env = mailEnv();
   const get = (route, opts = {}) => call(env, 'GET', `/admin/${route}`, { headers: ADMIN, ...opts });
   for (const route of ['roster.txt', 'readers.txt']) {
@@ -263,6 +264,404 @@ test('GET /admin/roster.txt and /admin/readers.txt: the lists the grid reads, as
   // a reader taken off is off the list at once
   await adminPost(env, 'storage-remove', { accessId: 'rd5678' });
   assert.equal(await (await get('readers.txt')).text(), 'cd5678 shared/data\nzq0006 .\n');
+});
+
+// The grid token (2026-10-07): a second bearer token, made on the admin page and saved as the file grid_token,
+// with which the job on the grid reads the two lists above and nothing else, so the admin token never sits on
+// the cluster. Only its SHA-256 is kept.
+const gridGet = (env, route, token, opts = {}) => call(env, 'GET', `/admin/${route}`, { headers: { authorization: `Bearer ${token}` }, origin: null, ...opts });
+const makeGrid = (env) => adminPost(env, 'grid-token', {});
+const gridStatus = (env) => call(env, 'GET', '/admin/grid-token', { headers: ADMIN }).then(asJson);
+const sha256Hex = (s) => crypto.createHash('sha256').update(s).digest('hex');
+// every key, value and metadata of every store, as text, to search for what must never be kept
+const everythingStored = (env) =>
+  [env.ACCESS, env.TRIALS, env.REPORTS]
+    .flatMap((kv) => [...[...kv.m].flatMap(([k, v]) => [k, v instanceof Uint8Array ? Buffer.from(v).toString('latin1') : v]), ...[...kv.meta].map(([k, m]) => k + JSON.stringify(m))])
+    .join('\n');
+
+test('the grid token: made once, kept as its hash, reads the two lists with the admin token\'s bodies, and nothing else', async () => {
+  const env = mailEnv();
+  await adminPost(env, 'add', { accessId: 'zz9999', name: 'Z. Last' });
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  await adminPost(env, 'storage-add', { accessId: 'rd5678', folders: ['shared/access', 'lab'] });
+  assert.deepEqual((await gridStatus(env)).body, { made_at: null, last_read_at: null });
+  const made = await makeGrid(env);
+  assert.equal(made.status, 200);
+  assert.equal(made.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(Object.keys(made.body), ['token', 'made_at', 'replaced']);
+  const { token, made_at: madeAt, replaced } = made.body;
+  assert.match(token, /^[0-9a-f]{64}$/);
+  assert.equal(replaced, false);
+  assert.equal(new Date(madeAt).toISOString(), madeAt);
+  // kept as its hash, and the token itself nowhere: not in a record, an audit line or a key
+  const rec = await env.ACCESS.get('grid-token', 'json');
+  assert.deepEqual(rec, { sha256: sha256Hex(token), made_at: madeAt });
+  assert.ok(!everythingStored(env).includes(token), 'the token is not kept');
+  assert.ok(!everythingStored(env).includes(token.toUpperCase()));
+  // the page sees when it was made, never the token or its hash
+  let status = await gridStatus(env);
+  assert.equal(status.status, 200);
+  assert.deepEqual(status.body, { made_at: madeAt, last_read_at: null });
+  // the two lists, as the grid reads them: the bodies and headers the admin token gets
+  for (const route of ['roster.txt', 'readers.txt']) {
+    const byAdmin = await call(env, 'GET', `/admin/${route}`, { headers: ADMIN, origin: null });
+    for (const origin of [null, SITE]) {
+      const r = await gridGet(env, route, token, { origin });
+      assert.equal(r.status, 200, route);
+      assert.equal(r.headers.get('content-type'), 'text/plain; charset=utf-8');
+      assert.equal(r.headers.get('cache-control'), 'no-store');
+      assert.equal(await r.text(), await byAdmin.clone().text(), route);
+    }
+    // another site's page is refused before any token is asked about
+    assert.equal((await gridGet(env, route, token, { origin: 'https://evil.example' })).status, 403);
+  }
+  assert.equal(await (await gridGet(env, 'roster.txt', token)).text(), 'ab1234\nzz9999\n');
+  assert.equal(await (await gridGet(env, 'readers.txt', token)).text(), 'rd5678 lab\nrd5678 shared/access\n');
+  // anywhere else the grid token is a wrong admin token: the same status and the same body, byte for byte
+  const wrong = await call(env, 'GET', '/admin/list', { headers: { authorization: 'Bearer wrong' } });
+  const wrongText = await wrong.text();
+  assert.equal(wrong.status, 401);
+  const bearer = { authorization: `Bearer ${token}` };
+  for (const [method, route, body] of [
+    ['GET', 'list'],
+    ['GET', 'allowlist'],
+    ['GET', 'storage-list'],
+    ['GET', 'grid-token'],
+    ['POST', 'grid-token', {}],
+    ['POST', 'grid-token-withdraw', {}],
+    ['POST', 'approve', { accessId: 'ab1234' }],
+    ['POST', 'add', { accessId: 'cd5678', name: 'C. D.' }],
+    ['POST', 'remove', { accessId: 'ab1234' }],
+    ['POST', 'storage-add', { accessId: 'cd5678', folders: ['lab'] }],
+    ['POST', 'roster.txt', { accessId: 'ab1234' }],
+    ['POST', 'readers.txt', {}],
+  ]) {
+    for (const origin of [null, SITE]) {
+      const r = await call(env, method, `/admin/${route}`, { headers: bearer, origin, body });
+      assert.equal(r.status, 401, `${method} ${route}`);
+      assert.equal(await r.text(), wrongText, `${method} ${route}`);
+    }
+  }
+  // none of that wrote anything: the same token, the same approvals, no reader added
+  assert.deepEqual(await env.ACCESS.get('grid-token', 'json'), rec);
+  assert.deepEqual((await approvedList(env)).body.accessIds, ['ab1234', 'zz9999']);
+  assert.equal(await env.ACCESS.get('storage:cd5678'), null);
+  // a near miss is no token at all, with the same answer
+  const flip = (c) => (c === '0' ? '1' : '0');
+  for (const near of [token.toUpperCase(), `${token.slice(0, -1)}${flip(token.slice(-1))}`, `${flip(token[0])}${token.slice(1)}`, token.slice(0, 63), `${token}0`, ` ${token}x`, rec.sha256]) {
+    const r = await gridGet(env, 'roster.txt', near);
+    assert.equal(r.status, 401, near);
+    assert.equal(await r.text(), wrongText);
+  }
+  // every character of the kept hash counts, the first, the last and between; a record that is not a hash takes nothing
+  const h = rec.sha256;
+  for (const kept of [...[0, 31, 63].map((at) => `${h.slice(0, at)}${flip(h[at])}${h.slice(at + 1)}`), h.toUpperCase(), h.slice(0, 63), `${h}0`, `${h}${h}`, '', undefined]) {
+    await env.ACCESS.put('grid-token', JSON.stringify({ ...rec, sha256: kept }));
+    assert.equal((await gridGet(env, 'roster.txt', token)).status, 401, String(kept));
+  }
+  await env.ACCESS.put('grid-token', JSON.stringify(rec));
+  assert.equal((await gridGet(env, 'roster.txt', token)).status, 200);
+  // the admin token still reads both
+  for (const route of ['roster.txt', 'readers.txt']) assert.equal((await call(env, 'GET', `/admin/${route}`, { headers: ADMIN, origin: null })).status, 200);
+  // and only the admin token makes one: with none configured, nothing is made
+  const none = mailEnv({ ADMIN_TOKEN: undefined });
+  assert.equal((await call(none, 'POST', '/admin/grid-token', { headers: ADMIN, body: {} })).status, 401);
+  assert.equal(await none.ACCESS.get('grid-token'), null);
+  status = await gridStatus(env);
+  assert.equal(status.body.made_at, madeAt);
+  assert.ok(!JSON.stringify(status.body).includes(rec.sha256) && !JSON.stringify(status.body).includes(token));
+});
+
+test('the grid token: a new one replaces the old at once, and withdraw takes it away', async () => {
+  const env = mailEnv();
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  const first = (await makeGrid(env)).body;
+  assert.equal(first.replaced, false);
+  assert.equal((await gridGet(env, 'roster.txt', first.token)).status, 200);
+  const second = (await makeGrid(env)).body;
+  assert.equal(second.replaced, true);
+  assert.notEqual(second.token, first.token);
+  assert.equal(await env.ACCESS.get('grid-token-read'), null, 'the old token\'s last read went with it');
+  assert.equal((await gridGet(env, 'roster.txt', first.token)).status, 401, 'the old one reads nothing');
+  assert.equal((await gridGet(env, 'roster.txt', second.token)).status, 200);
+  const shown = (await gridStatus(env)).body;
+  assert.equal(shown.made_at, second.made_at);
+  assert.equal(new Date(shown.last_read_at).toISOString(), shown.last_read_at, 'the new one\'s own read');
+  assert.equal((await env.ACCESS.get('grid-token', 'json')).sha256, sha256Hex(second.token));
+  // withdraw: the token reads nothing, the page shows none, and both records are gone
+  let w = await adminPost(env, 'grid-token-withdraw', {});
+  assert.deepEqual([w.status, w.body], [200, { withdrawn: true }]);
+  for (const route of ['roster.txt', 'readers.txt']) assert.equal((await gridGet(env, route, second.token)).status, 401, route);
+  assert.deepEqual((await gridStatus(env)).body, { made_at: null, last_read_at: null });
+  assert.equal(await env.ACCESS.get('grid-token'), null);
+  assert.equal(await env.ACCESS.get('grid-token-read'), null);
+  w = await adminPost(env, 'grid-token-withdraw', {});
+  assert.deepEqual([w.status, w.body], [200, { withdrawn: false }]);
+  // a token made after a withdrawal replaces nothing
+  const third = (await makeGrid(env)).body;
+  assert.equal(third.replaced, false);
+  assert.equal((await gridGet(env, 'roster.txt', third.token)).status, 200);
+  // a GET of the withdraw route is no route; a body that is not a JSON object is refused as every admin write
+  assert.equal((await call(env, 'GET', '/admin/grid-token-withdraw', { headers: ADMIN }).then(asJson)).status, 404);
+  assert.equal((await call(env, 'POST', '/admin/grid-token', { headers: ADMIN, body: 'not json' }).then(asJson)).status, 400);
+  assert.equal((await gridGet(env, 'roster.txt', third.token)).status, 200, 'a refused make replaces nothing');
+  // each write left an audit line, and none holds a token
+  const lines = [...env.ACCESS.m].filter(([k]) => k.startsWith('audit:')).map(([, v]) => JSON.parse(v)).filter((a) => a.action.startsWith('grid-token'));
+  assert.deepEqual(lines.map((a) => [a.action, a.replaced ?? a.withdrawn]).sort(), [['grid-token', false], ['grid-token', false], ['grid-token', true], ['grid-token-withdraw', false], ['grid-token-withdraw', true]]);
+  for (const t of [first.token, second.token, third.token]) assert.ok(!everythingStored(env).includes(t));
+});
+
+// the Worker's clock set by now(Real) for what fn does, as the vectors fix it (Date and Date.now; Date.parse
+// is the real one): shifted moves it by ms, stopped holds it at ms, for a boundary to the millisecond
+async function withClock(now, fn) {
+  const Real = globalThis.Date;
+  class Moved extends Real {
+    constructor(...a) {
+      if (a.length) super(...a);
+      else super(now(Real));
+    }
+    static now() {
+      return now(Real);
+    }
+  }
+  globalThis.Date = Moved;
+  try {
+    return await fn();
+  } finally {
+    globalThis.Date = Real;
+  }
+}
+const shifted = (ms, fn) => withClock((Real) => Real.now() + ms, fn);
+const stopped = (ms, fn) => withClock(() => ms, fn);
+
+test('the grid token\'s last read: written on the first read, not again within the hour, never by a failed write', async () => {
+  const env = mailEnv();
+  const { token, made_at: madeAt } = (await makeGrid(env)).body;
+  const tokenRecord = await env.ACCESS.get('grid-token');
+  // count the writes the reads make: every one that is not the token's own record, which a read never writes
+  const kv = env.ACCESS;
+  const put = kv.put.bind(kv);
+  const writes = [];
+  kv.put = (k, v, o) => {
+    writes.push(k);
+    return put(k, v, o);
+  };
+  const before = Date.now();
+  assert.equal((await gridGet(env, 'roster.txt', token)).status, 200);
+  assert.equal(writes.length, 1, 'the first read is written');
+  const first = (await gridStatus(env)).body;
+  assert.equal(first.made_at, madeAt);
+  assert.ok(Date.parse(first.last_read_at) >= before && Date.parse(first.last_read_at) <= Date.now());
+  for (let i = 0; i < 5; i++) assert.equal((await gridGet(env, i % 2 ? 'readers.txt' : 'roster.txt', token)).status, 200);
+  // 59 minutes on: still within the hour
+  await shifted(59 * 60000, () => gridGet(env, 'roster.txt', token));
+  assert.equal(writes.length, 1, 'not again within the hour');
+  assert.equal((await gridStatus(env)).body.last_read_at, first.last_read_at);
+  // the admin token's reads are not the grid token's
+  await call(env, 'GET', '/admin/roster.txt', { headers: ADMIN, origin: null });
+  assert.equal(writes.length, 1);
+  // 61 minutes on: written again, and then not again within that hour
+  await shifted(61 * 60000, () => gridGet(env, 'roster.txt', token));
+  assert.equal(writes.length, 2);
+  const second = (await gridStatus(env)).body.last_read_at;
+  assert.ok(Date.parse(second) - Date.parse(first.last_read_at) >= 61 * 60000);
+  await shifted(100 * 60000, () => gridGet(env, 'readers.txt', token));
+  assert.equal(writes.length, 2);
+  // reads never write the token's own record
+  assert.ok(!writes.includes('grid-token'));
+  assert.equal(await env.ACCESS.get('grid-token'), tokenRecord);
+  // with ctx.waitUntil the lookup of the last read, and the write when one is due, are handed to it, after the answer
+  const viaCtx = async (ms) => {
+    const later = [];
+    const r = await shifted(ms, () => worker.fetch(new Request('https://service.example/admin/roster.txt', { headers: { authorization: `Bearer ${token}` } }), env, { waitUntil: (p) => later.push(p) }));
+    assert.equal(r.status, 200);
+    assert.equal(later.length, 1);
+    await Promise.all(later);
+  };
+  await viaCtx(110 * 60000);
+  assert.equal(writes.length, 2, 'none due');
+  await viaCtx(200 * 60000);
+  assert.equal(writes.length, 3);
+  // a failed write, thrown or refused, never fails the read, and what is logged names no token
+  const errors = [];
+  const realError = console.error;
+  console.error = (...a) => errors.push(a.map(String).join(' '));
+  try {
+    let hours = 5;
+    for (const fail of [() => { throw new Error('KV down'); }, () => Promise.reject(new Error('KV down'))]) {
+      kv.put = (k, v, o) => (k === 'grid-token' ? put(k, v, o) : fail());
+      const got = await shifted(hours++ * 3600000, () => gridGet(env, 'roster.txt', token));
+      assert.equal(got.status, 200);
+      assert.equal(await got.text(), '');
+    }
+  } finally {
+    console.error = realError;
+    kv.put = put;
+  }
+  assert.equal(errors.length, 2);
+  for (const e of errors) {
+    assert.match(e, /^grid token: the last read was not recorded \(Error\)$/);
+    assert.ok(!e.includes(token));
+  }
+});
+
+// A location of Cloudflare's that still holds the records from before a change, as KV allows for about a
+// minute: its reads of 'grid-token' and 'grid-token-read' answer from then, its writes reach everyone.
+const staleView = async (env) => {
+  const kv = env.ACCESS;
+  const then = new Map(await Promise.all(['grid-token', 'grid-token-read'].map(async (k) => [k, await kv.get(k)])));
+  const get = (k, type) => (then.has(k) ? (then.get(k) === null ? null : type === 'json' ? JSON.parse(then.get(k)) : then.get(k)) : kv.get(k, type));
+  return { ...env, ACCESS: { get, put: kv.put.bind(kv), delete: kv.delete.bind(kv), list: kv.list.bind(kv), getWithMetadata: kv.getWithMetadata.bind(kv) } };
+};
+
+test('the grid token\'s last read belongs to that token: a late write from a stale location never brings an old one back', async () => {
+  const env = mailEnv();
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  const old = (await makeGrid(env)).body;
+  // replaced: a stale location still reads with the old token (the minute KV allows), and writes its read
+  let stale = await staleView(env);
+  const fresh = (await makeGrid(env)).body;
+  assert.equal((await shifted(3600001, () => gridGet(stale, 'roster.txt', old.token))).status, 200);
+  assert.ok(await env.ACCESS.get('grid-token-read'), 'the stale read was written');
+  assert.equal((await env.ACCESS.get('grid-token', 'json')).sha256, sha256Hex(fresh.token), 'the token\'s record was not');
+  assert.deepEqual((await gridStatus(env)).body, { made_at: fresh.made_at, last_read_at: null }, 'the old token\'s read is not the new one\'s');
+  assert.equal((await gridGet(env, 'roster.txt', old.token)).status, 401);
+  assert.equal((await gridGet(env, 'roster.txt', fresh.token)).status, 200);
+  const own = (await gridStatus(env)).body.last_read_at;
+  assert.ok(own && Date.parse(own) <= Date.now(), 'the new token\'s own read is recorded, though the old one\'s stands an hour ahead');
+  // withdrawn: the same, and nothing reads at an up-to-date location afterwards
+  stale = await staleView(env);
+  await adminPost(env, 'grid-token-withdraw', {});
+  assert.equal((await shifted(2 * 3600001, () => gridGet(stale, 'readers.txt', fresh.token))).status, 200);
+  assert.equal(await env.ACCESS.get('grid-token'), null);
+  assert.deepEqual((await gridStatus(env)).body, { made_at: null, last_read_at: null });
+  for (const t of [old.token, fresh.token]) assert.equal((await gridGet(env, 'roster.txt', t)).status, 401);
+});
+
+test('the grid token\'s last read: an hour to the millisecond is not older than an hour, and another token\'s read does not count', async () => {
+  const env = mailEnv();
+  const { token } = (await makeGrid(env)).body;
+  const head = sha256Hex(token).slice(0, 16);
+  const t = Date.parse('2026-10-07T12:00:00.000Z');
+  const iso = (ms) => new Date(ms).toISOString();
+  await env.ACCESS.put('grid-token-read', JSON.stringify({ sha256_head: head, last_read_at: iso(t) }));
+  assert.equal((await stopped(t + 3600000, () => gridGet(env, 'roster.txt', token))).status, 200);
+  assert.equal((await gridStatus(env)).body.last_read_at, iso(t), 'one hour old is not older than an hour');
+  await stopped(t + 3600001, () => gridGet(env, 'roster.txt', token));
+  assert.equal((await gridStatus(env)).body.last_read_at, iso(t + 3600001));
+  // a read of another token (a late write from a location that still held it), ten minutes old: not this
+  // token's read, so this token's read is written now
+  await env.ACCESS.put('grid-token-read', JSON.stringify({ sha256_head: sha256Hex('another token').slice(0, 16), last_read_at: iso(t + 7200000) }));
+  assert.equal((await gridStatus(env)).body.last_read_at, null);
+  await stopped(t + 7800000, () => gridGet(env, 'roster.txt', token));
+  assert.deepEqual(await env.ACCESS.get('grid-token-read', 'json'), { sha256_head: head, last_read_at: iso(t + 7800000) });
+});
+
+test('the grid token\'s last read: a lookup that fails, is not JSON or never answers never fails or holds up the read', async () => {
+  const env = mailEnv();
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  const { token } = (await makeGrid(env)).body;
+  const kv = env.ACCESS;
+  const get = kv.get.bind(kv);
+  const byAdmin = await (await call(env, 'GET', '/admin/roster.txt', { headers: ADMIN, origin: null })).text();
+  // a wrong value costs one KV read, of the token's record, and gets the plain 401
+  const gets = [];
+  kv.get = (k, type) => {
+    gets.push(k);
+    return get(k, type);
+  };
+  for (const route of ['roster.txt', 'readers.txt']) assert.equal((await gridGet(env, route, 'guess')).status, 401);
+  assert.deepEqual(gets, ['grid-token', 'grid-token']);
+  const errors = [];
+  const realError = console.error;
+  console.error = (...a) => errors.push(a.map(String).join(' '));
+  try {
+    // the lookup throws, or answers a refusal: the list as the admin token gets it, and a line naming no token
+    let hours = 2;
+    for (const fail of [() => { throw new Error('KV down'); }, () => Promise.reject(new Error('KV down'))]) {
+      kv.get = (k, type) => (k === 'grid-token-read' ? fail() : get(k, type));
+      const r = await shifted(hours++ * 3600000, () => gridGet(env, 'roster.txt', token));
+      assert.equal(r.status, 200);
+      assert.equal(await r.text(), byAdmin);
+    }
+    assert.equal(errors.length, 2);
+    for (const e of errors) {
+      assert.match(e, /^grid token: the last read was not recorded \(Error\)$/);
+      assert.ok(!e.includes(token));
+    }
+    // the admin page is told of the failure, never shown a plausible "not read yet"
+    await assert.rejects(gridStatus(env), /KV down/);
+    // a lookup that never answers holds up nothing: the answer comes, the lookup waits in waitUntil
+    kv.get = (k, type) => (k === 'grid-token-read' ? new Promise(() => {}) : get(k, type));
+    const later = [];
+    const r = await worker.fetch(new Request('https://service.example/admin/roster.txt', { headers: { authorization: `Bearer ${token}` } }), env, { waitUntil: (p) => later.push(p) });
+    assert.equal(r.status, 200);
+    assert.equal(await r.text(), byAdmin);
+    assert.equal(later.length, 1);
+  } finally {
+    console.error = realError;
+    kv.get = get;
+  }
+  // a last-read record that is not JSON is none: the read answers, the status shows none, and the read writes a good one
+  await kv.put('grid-token-read', 'not json');
+  assert.deepEqual((await gridStatus(env)).body.last_read_at, null);
+  const r = await gridGet(env, 'readers.txt', token);
+  assert.equal(r.status, 200);
+  assert.equal((await kv.get('grid-token-read', 'json')).sha256_head, sha256Hex(token).slice(0, 16));
+  assert.notEqual((await gridStatus(env)).body.last_read_at, null);
+  // a token record that is not JSON, or has no hash, is no token: the plain 401 for any value, and the status shows none
+  for (const broken of ['not json', JSON.stringify({ made_at: '2026-10-07T12:00:00.000Z' })]) {
+    await kv.put('grid-token', broken);
+    for (const value of [token, 'guess']) assert.equal((await gridGet(env, 'roster.txt', value)).status, 401);
+    assert.deepEqual((await gridStatus(env)).body, { made_at: null, last_read_at: null });
+  }
+});
+
+test('making a grid token: a failure before the new record keeps the old token, and a failed audit line still answers the new one', async () => {
+  const env = mailEnv();
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  const first = (await makeGrid(env)).body;
+  assert.equal((await gridGet(env, 'roster.txt', first.token)).status, 200);
+  const kv = env.ACCESS;
+  const [put, del] = [kv.put.bind(kv), kv.delete.bind(kv)];
+  const kept = await kv.get('grid-token');
+  // the old token's last read cannot be taken away, or the new record cannot be written: no token is made,
+  // and the old one still reads
+  for (const [name, fault] of [
+    ['delete', () => (kv.delete = (k) => (k === 'grid-token-read' ? Promise.reject(new Error('KV down')) : del(k)))],
+    ['put', () => (kv.put = (k, v, o) => (k === 'grid-token' ? Promise.reject(new Error('KV down')) : put(k, v, o)))],
+  ]) {
+    fault();
+    try {
+      await assert.rejects(makeGrid(env), /KV down/, name);
+    } finally {
+      kv.put = put;
+      kv.delete = del;
+    }
+    assert.equal(await kv.get('grid-token'), kept, name);
+    assert.equal((await gridGet(env, 'roster.txt', first.token)).status, 200, name);
+    assert.equal((await gridStatus(env)).body.made_at, first.made_at, name);
+  }
+  // the audit line cannot be written: the new token is made and answered, logged by the error's name alone
+  const errors = [];
+  const realError = console.error;
+  console.error = (...a) => errors.push(a.map(String).join(' '));
+  kv.put = (k, v, o) => (k.startsWith('audit:') ? Promise.reject(new Error('KV down')) : put(k, v, o));
+  let made;
+  try {
+    made = await makeGrid(env);
+  } finally {
+    kv.put = put;
+    console.error = realError;
+  }
+  assert.equal(made.status, 200);
+  assert.equal(made.body.replaced, true);
+  assert.match(made.body.token, /^[0-9a-f]{64}$/);
+  assert.equal((await gridGet(env, 'roster.txt', made.body.token)).status, 200);
+  assert.equal((await gridGet(env, 'roster.txt', first.token)).status, 401);
+  assert.equal((await gridStatus(env)).body.made_at, made.body.made_at);
+  assert.deepEqual(errors, ['grid token: made, but its audit line was not written (Error)']);
+  assert.ok(!everythingStored(env).includes(made.body.token));
 });
 
 test('POST /request validates, stores a pending record and files one issue', async () => {

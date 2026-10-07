@@ -23,6 +23,19 @@
     }
    }
   },
+  "admin-or-grid-token": {
+   "description": "authorization: Bearer <ADMIN_TOKEN>, or Bearer <GRID_TOKEN>: the grid token, made on the admin page (POST /admin/grid-token), which reads GET /admin/roster.txt and GET /admin/readers.txt and nothing else (on every other route it is answered as a wrong admin token, the same 401). Either token is read from a mode-0600 file and sent in a header, never on a command line (curl -H @file). Only the grid token's SHA-256 is kept; a new one replaces it at once where it is made, and other Cloudflare locations may take the old one, or refuse the new one, for about a minute (KV). Origin and CORS as admin-token.",
+   "answers": {
+    "401": {
+     "type": "application/json",
+     "schema": "error.schema.json"
+    },
+    "403": {
+     "type": "application/json",
+     "schema": "error.schema.json"
+    }
+   }
+  },
   "microsoft-sign-in": {
    "description": "authorization: Bearer <the person's Microsoft sign-in token>, which the service uses once, to ask Microsoft Graph who the person is; never stored or logged.",
    "answers": {
@@ -535,7 +548,7 @@
     "OpenSpineConsortium/hpcworker",
     "admin.mjs"
    ],
-   "auth": "admin-token",
+   "auth": "admin-or-grid-token",
    "summary": "the approved list as the grid reads it (lines.json, roster)",
    "methods": {
     "GET": {
@@ -555,7 +568,7 @@
     "OpenSpineConsortium/hpcworker",
     "admin.mjs"
    ],
-   "auth": "admin-token",
+   "auth": "admin-or-grid-token",
    "summary": "the readers of lab storage as the grid reads them (lines.json, readers)",
    "methods": {
     "GET": {
@@ -564,6 +577,70 @@
        "type": "text/plain; charset=utf-8",
        "text": "readers"
       }
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/grid-token",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io"
+   ],
+   "auth": "admin-token",
+   "summary": "the grid token: POST makes one (replacing any earlier one) and answers it once, for the page to save as the file grid_token; GET shows when it was made and last read, never the token or its hash",
+   "methods": {
+    "GET": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/grid-token.status.answer"
+      }
+     }
+    },
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/grid-token.answer"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/grid-token.request"
+     }
+    }
+   }
+  },
+  {
+   "path": "/admin/grid-token-withdraw",
+   "for": "programs",
+   "callers": [
+    "OpenSpineConsortium/openspineconsortium.github.io"
+   ],
+   "auth": "admin-token",
+   "summary": "take the grid token away: the two lists answer it 401 from then on (other locations may take it for about a minute)",
+   "methods": {
+    "POST": {
+     "answers": {
+      "200": {
+       "type": "application/json",
+       "schema": "admin.schema.json#/$defs/grid-token-withdraw.answer"
+      },
+      "400": {
+       "type": "application/json",
+       "schema": "error.schema.json"
+      }
+     },
+     "request": {
+      "type": "application/json",
+      "max_bytes": 8192,
+      "schema": "admin.schema.json#/$defs/grid-token-withdraw.request"
      }
     }
    }

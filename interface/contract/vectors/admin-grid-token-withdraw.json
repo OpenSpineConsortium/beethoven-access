@@ -1,0 +1,31 @@
+{
+ "vector": "admin-grid-token-withdraw",
+ "route": "/admin/grid-token-withdraw",
+ "summary": "Take the grid token away",
+ "request": {
+  "method": "POST",
+  "path": "/admin/grid-token-withdraw",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "authorization": "Bearer <ADMIN_TOKEN>",
+   "content-type": "application/json"
+  },
+  "body": {}
+ },
+ "answer": {
+  "status": 200,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "withdrawn": true
+  }
+ }
+}

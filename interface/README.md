@@ -21,8 +21,8 @@ Who takes what, by route (`routes.json` has the full list):
 | --- | --- |
 | beethoven-extension (Beethoven) | `POST /access_check` |
 | beethoven-vscode (Beethoven for VS Code, its grid scripts and `publish.sh`) | `POST /trial`, `GET /revoked`, `POST /report`, `GET /allowlist` (older builds), `POST /admin/revoke-lid` |
-| hpcworker (`tools/grid_access.sh`) | `GET /admin/roster.txt`, `GET /admin/readers.txt` |
-| openspineconsortium.github.io (the request, lab storage and admin pages) | `POST /request`, `POST /storage_request`, the other `/admin/*` routes |
+| hpcworker (`tools/grid_access.sh`) | `GET /admin/roster.txt`, `GET /admin/readers.txt`, with the grid token (`auth` `admin-or-grid-token` in `routes.json`), or the admin token |
+| openspineconsortium.github.io (the request, lab storage and admin pages) | `POST /request`, `POST /storage_request`, the other `/admin/*` routes, the grid token's among them (`POST /admin/grid-token` makes it and answers it once, `GET /admin/grid-token` shows its dates, `POST /admin/grid-token-withdraw` takes it away) |
 
 The addresses themselves reach the extension through the website's `beethoven/services.json`, which
 `deploy.sh` prints and the site repository takes in a reviewed commit.
@@ -40,12 +40,15 @@ What a client checks with it: that what it sends passes the request's schema, an
 each answer holds for every vector of its routes (status, content type, body). A vector is one
 exchange: `request` (method, path, the headers that matter, the JSON body as a value whatever the
 content type) and `answer` (status, every header, the body: JSON as a value, text as a string, `null`
-for none). Secrets in a request are placeholders (`Bearer <ADMIN_TOKEN>`). The vectors' key and list
-are signed by the key id `vectors`, made from a fixed seed in this repository's tests: its public key
-is `vectors/key.json`, so a verifier can check them in its own tests, and no verifier may trust it
-anywhere else. The schemas use only `type`, `enum`, `const`, `pattern`, `minimum`, `required`,
-`properties`, `additionalProperties`, `items`, `anyOf`, `allOf`, `not` and `$ref` (the same set as
-hpcworker's contract), and a reader ignores a field it does not know.
+for none). Secrets in a request are placeholders (`Bearer <ADMIN_TOKEN>`, `Bearer <GRID_TOKEN>`). The
+one token a vector shows is the grid token in the answer that makes it, since that answer is the
+token: it comes from the vectors' seeded random bytes and opens nothing but the Worker that made the
+vectors. The vectors' key and list are signed by the key id `vectors`, made from a fixed seed in this
+repository's tests: its public key is `vectors/key.json`, so a verifier can check them in its own
+tests, and no verifier may trust it anywhere else. The schemas use only `type`, `enum`, `const`,
+`pattern`, `minimum`, `required`, `properties`, `additionalProperties`, `items`, `anyOf`, `allOf`,
+`not` and `$ref` (the same set as hpcworker's contract), and a reader ignores a field it does not
+know.
 
 ## How an export changes here
 

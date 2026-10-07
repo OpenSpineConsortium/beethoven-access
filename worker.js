@@ -66,7 +66,10 @@
 //                    remove, invited, grant, seat, reset-seat, seat-rule, cv, revoke-lid, notify-test
 //                    (ACCESS_CHECK.md, "The admin routes", is the page's contract). Behind a bearer
 //                    token (secret ADMIN_TOKEN); put Cloudflare Access in front of it as a second wall. Every
-//                    write leaves an audit line (KV ACCESS audit:<time>:<4 hex>).
+//                    write leaves an audit line (KV ACCESS audit:<time>:<4 hex>). The two lists the grid
+//                    reads (roster.txt, readers.txt) also take the grid token, which grid-token makes,
+//                    replaces and shows the dates of, and grid-token-withdraw takes away; only its SHA-256 is
+//                    kept (KV ACCESS grid-token).
 //   /storage_request, /storage_decide, /admin/storage-*  lab storage, read only: who may read which folders
 //                    of the lab's storage on the grid, asked for on the website's storage page and decided
 //                    the same way as access (storage.js says how; tools/grid_access.sh in hpcworker applies it).
@@ -275,6 +278,66 @@ async function sameSecret(given, expected) {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
   return diff === 0;
+}
+
+// The grid token: a second bearer token, made on the admin page, that reads GET /admin/roster.txt and
+// /admin/readers.txt and nothing else, so the job on the grid that applies the lists never holds the admin
+// token. Only its SHA-256 is kept. When it last read a list sits under a key of its own, naming the token
+// by the first 16 characters of that hash: KV has no compare-and-set, and a read at a location still
+// holding a replaced or withdrawn record would otherwise write that record back, and the old token with it.
+const GRID_TOKEN_KEY = 'grid-token';
+const GRID_READ_KEY = 'grid-token-read';
+// a read is recorded once an hour at most, so the lists' readers cost about 24 KV writes a day
+const GRID_READ_EVERY_MS = 3600 * 1000;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+const readOf = (rec, read) => !!read && typeof read.sha256_head === 'string' && read.sha256_head === rec.sha256.slice(0, 16);
+
+// the given value's hash against the stored one, every character compared whatever differs first
+async function gridTokenMatches(given, rec) {
+  if (!given || !rec || typeof rec.sha256 !== 'string' || !SHA256_HEX.test(rec.sha256)) return false;
+  const a = hex(await sha256(given));
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ rec.sha256.charCodeAt(i);
+  return diff === 0;
+}
+
+// one of the two grid-token records; a value that is not JSON is no record (a read writes a good one again)
+async function gridRecord(env, key) {
+  const text = await env.ACCESS.get(key);
+  if (text === null) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+// May this bearer value read the grid's lists as the grid token? Only the token's record is read before the
+// answer, so a wrong value costs one KV read; the last read is looked up and written after it, and nothing
+// in that, a failed or unreadable lookup included, can fail or hold up the read.
+async function gridTokenReads(env, ctx, given) {
+  if (!given) return false;
+  const rec = await gridRecord(env, GRID_TOKEN_KEY);
+  if (!(await gridTokenMatches(given, rec))) return false;
+  const nowMs = Date.now();
+  const stamp = Promise.resolve()
+    .then(() => gridRecord(env, GRID_READ_KEY))
+    .then((read) => {
+      const last = readOf(rec, read) ? Date.parse(read.last_read_at) : NaN;
+      if (Number.isNaN(last) || nowMs - last > GRID_READ_EVERY_MS) return env.ACCESS.put(GRID_READ_KEY, JSON.stringify({ sha256_head: rec.sha256.slice(0, 16), last_read_at: new Date(nowMs).toISOString() }));
+    })
+    .catch((e) => console.error(`grid token: the last read was not recorded (${(e && e.name) || 'error'})`));
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(stamp);
+  else await stamp;
+  return true;
+}
+
+// what the admin page shows of the grid token: when it was made and last read, never the hash. A KV
+// failure here is the page's error, never a plausible "not read yet".
+async function gridTokenStatus(env) {
+  const [rec, read] = await Promise.all([gridRecord(env, GRID_TOKEN_KEY), gridRecord(env, GRID_READ_KEY)]);
+  if (!rec || typeof rec.sha256 !== 'string') return { made_at: null, last_read_at: null };
+  return { made_at: rec.made_at || null, last_read_at: readOf(rec, read) ? read.last_read_at || null : null };
 }
 
 // the website's pages call /request and /admin/* from the browser; only that origin is allowed. A call
@@ -1674,10 +1737,14 @@ async function admin(request, env, url, ctx) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   const reply = (status, body) => json(status, body, cors);
   const given = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!(await sameSecret(given, env.ADMIN_TOKEN))) return reply(401, { error: 'admin token missing or wrong' });
   const route = url.pathname.slice('/admin/'.length);
+  // the grid token reads the two lists and nothing else: anywhere else it is a wrong admin token, with the
+  // same answer, and it costs no KV read there
+  const gridList = request.method === 'GET' && (route === 'roster.txt' || route === 'readers.txt');
+  if (!(await sameSecret(given, env.ADMIN_TOKEN)) && !(gridList && (await gridTokenReads(env, ctx, given)))) return reply(401, { error: 'admin token missing or wrong' });
   // lab storage, read only: its own records and routes (storage.js)
   if (route.startsWith('storage-')) return STORAGE.admin(request, env, route, reply);
+  if (request.method === 'GET' && route === 'grid-token') return reply(200, await gridTokenStatus(env));
   if (request.method === 'GET' && route === 'list') {
     const [pending, approved, denied, revoked, checks, seats, conflicts, installed] = await Promise.all([records(env, 'pending'), records(env, 'approved'), records(env, 'denied'), env.ACCESS.get('revoked', 'json'), checkRecords(env), records(env, 'seat'), records(env, 'conflict'), records(env, 'installed')]);
     const nowMs = Date.now();
@@ -1728,6 +1795,29 @@ async function admin(request, env, url, ctx) {
   const body = r.body;
   const accessId = String(body.accessId ?? '').trim().toLowerCase();
   const now = new Date().toISOString();
+  if (route === 'grid-token') {
+    // a new grid token replaces the old at once here; other locations may hold the old record about a minute
+    // (KV). The token is in this answer and nowhere else: the page saves it as the file grid_token
+    const token = hex(crypto.getRandomValues(new Uint8Array(32)));
+    const replaced = (await env.ACCESS.get(GRID_TOKEN_KEY)) !== null;
+    // the old token's last read goes first, so a failure here replaces nothing and the old token still reads
+    await env.ACCESS.delete(GRID_READ_KEY);
+    await env.ACCESS.put(GRID_TOKEN_KEY, JSON.stringify({ sha256: hex(await sha256(token)), made_at: now }));
+    // From here the old token reads nothing, so the new one must reach the page: a failed audit line is
+    // logged, never answered as a failure that would leave no token anywhere.
+    try {
+      await audit(env, 'grid-token', null, { replaced });
+    } catch (e) {
+      console.error(`grid token: made, but its audit line was not written (${(e && e.name) || 'error'})`);
+    }
+    return reply(200, { token, made_at: now, replaced });
+  }
+  if (route === 'grid-token-withdraw') {
+    const withdrawn = (await env.ACCESS.get(GRID_TOKEN_KEY)) !== null;
+    await Promise.all([env.ACCESS.delete(GRID_TOKEN_KEY), env.ACCESS.delete(GRID_READ_KEY)]);
+    await audit(env, 'grid-token-withdraw', null, { withdrawn });
+    return reply(200, { withdrawn });
+  }
   if (route === 'notify-test') {
     // one test e-mail to the maintainer; the answer is the provider's status (null when nothing was sent)
     const text = [
