@@ -88,14 +88,19 @@ names `ashley-service`). `admin.mjs` takes the address from `BEETHOVEN_SERVICE_U
 
 ## Deploying from GitHub
 
-greg's decision of 2026-10-07: `.github/workflows/deploy-access.yml` deploys the service whenever a change
-under `tools/intake/` (or to the workflow itself) lands on `main`, and when started by hand from the Actions
-tab (main's code only). One run at a time, never cancelled midway. It runs `worker.test.mjs` and
-`vendor.test.mjs` first and deploys nothing if they fail; then, in `tools/intake`, it does what `deploy.sh`
-does with the code and nothing else: `wrangler deploy --name beethoven-access --var
+greg's decision of 2026-10-07: `.github/workflows/deploy.yml` deploys the service whenever a change to
+`worker.js`, `storage.js`, `wrangler.toml` (or to the workflow itself) lands on `main`, and when started by
+hand from the Actions tab (main's code only). One run at a time, never cancelled midway. It runs the tests
+first (`node --test test/*.test.mjs`) and deploys nothing if they fail; then it does what `deploy.sh` does
+with the code and nothing else: `wrangler deploy --name beethoven-access --var
 SERVICE_NAME:beethoven-access`, a check that `/health` on the address the deploy printed answers
 `{"ok":true}`, and the same for `ashley-service` (both names run the same code, [Two names](#two-names)).
-wrangler is pinned to an exact version in the workflow (4.148.0); raise it there by hand.
+wrangler is pinned to an exact version in the workflow (4.148.0); raise it there by hand. The two
+actions it uses, `actions/checkout` and `actions/setup-node`, are pinned to a commit with the version
+beside it.
+
+`.github/workflows/ci.yml` runs the same tests, and `bash -n` on the two shell scripts, on every pull
+request and every push to `main`. It reads no secret and deploys nothing.
 
 It needs two repository secrets, which greg saves under Settings, Secrets and variables, Actions:
 
