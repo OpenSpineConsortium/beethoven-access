@@ -162,13 +162,37 @@ function tokenErrors(name, token, key = VECTOR_KEY) {
   return out;
 }
 
+// The routes the Worker's code answers: every path it compares p with (a prefix it tests with startsWith as
+// "<prefix>*"), and every admin route it compares route with or switches on, in worker.js and storage.js.
+// Any spelling counts, digits, capitals and dashes too, so a route can never be added unseen.
+function routesIn(worker, storage) {
+  const paths = [...worker.matchAll(/\bp === '(\/[^']*)'/g)].map((m) => m[1]);
+  const prefixes = [...worker.matchAll(/\bp\.startsWith\('(\/[^']*)'\)/g)].map((m) => `${m[1]}*`);
+  const admin = [...worker.matchAll(/\broute === '([^']+)'/g), ...worker.matchAll(/^\s+case '([^']+)':/gm), ...storage.matchAll(/\broute === '([^']+)'/g)].map((m) => `/admin/${m[1]}`);
+  return { paths, prefixes, admin };
+}
+
+test('the route scan sees a route whatever its spelling', () => {
+  const all = (w, s) => Object.values(routesIn(w, s)).flat();
+  for (const [line, route] of [
+    ["    if (p === '/access_check2') return accessCheck(request, env, ctx);", '/access_check2'],
+    ["    if (p === '/status-v2') return json(200, { ok: true });", '/status-v2'],
+    ["    if (p === '/Trial') return trial(request, env);", '/Trial'],
+    ["    if (p.startsWith('/files/')) return files(request, env);", '/files/*'],
+    ["  if (route === 'grant2') return reply(200, {});", '/admin/grant2'],
+    ["    case 'seat-v2':", '/admin/seat-v2'],
+  ]) {
+    assert.deepEqual(all(`${line}\n`, ''), [route], line);
+  }
+  assert.deepEqual(all('', "    if (route === 'storage-x2') {\n"), ['/admin/storage-x2']);
+  // a comparison that is not a route is not one
+  assert.deepEqual(all("    if (typeof p === 'string') return p;\n", ''), []);
+});
+
 test('routes.json names every route the Worker answers, and nothing else', () => {
-  const worker = fs.readFileSync(path.join(REPO, 'worker.js'), 'utf8');
-  const storage = fs.readFileSync(path.join(REPO, 'storage.js'), 'utf8');
-  const paths = [...worker.matchAll(/\bp === '(\/[a-z_]+)'/g)].map((m) => m[1]);
-  const admin = [...worker.matchAll(/\broute === '([a-z.-]+)'/g), ...worker.matchAll(/^\s+case '([a-z-]+)': \{/gm), ...storage.matchAll(/\broute === '([a-z.-]+)'/g)].map((m) => `/admin/${m[1]}`);
-  assert.ok(paths.length >= 10 && admin.length >= 20, 'the scan found the routes');
-  const answered = [...new Set([...paths, ...admin, '/admin/*'])].sort();
+  const { paths, prefixes, admin } = routesIn(fs.readFileSync(path.join(REPO, 'worker.js'), 'utf8'), fs.readFileSync(path.join(REPO, 'storage.js'), 'utf8'));
+  assert.ok(paths.length >= 10 && admin.length >= 20 && prefixes.includes('/admin/*'), 'the scan found the routes');
+  const answered = [...new Set([...paths, ...prefixes, ...admin])].sort();
   assert.deepEqual(routes.routes.map((r) => r.path).sort(), answered);
   for (const r of routes.routes) {
     assert.ok(Object.hasOwn(routes.auth, r.auth), `${r.path}: auth ${r.auth}`);
