@@ -145,7 +145,13 @@ switch (cmd) {
     const installs = j.installs || [];
     console.log(`${j.accessId}: ${installs.length} installation(s) on record${j.any_installation ? '; the store reviewers\' mock account: approved on a localhost portal only, from any installation, none recorded' : ''}`);
     for (const i of installs) console.log(`  ${i.install_short}  first check ${at(i.first_seen)}  last check ${at(i.last_seen)}  ${i.product || '?'} ${i.version || '?'}`);
-    if (j.conflict) console.log(`  refused ${j.conflict.count} time(s) from ${j.conflict.other_install_short}, an installation that serves another account (${j.conflict.kind}); first ${at(j.conflict.first_at)}, last ${at(j.conflict.last_at)}`);
+    // a refusal of kind other_installation is from before 2026-10-11, when a second installation of the account
+    // was refused; the service keeps it until the account's next new installation is approved
+    if (j.conflict) {
+      const c = j.conflict;
+      const why = c.kind === 'other_installation' ? `a second installation of this account, refused under the rule before 2026-10-11 (${c.kind})` : `an installation that serves another account (${c.kind})`;
+      console.log(`  refused ${c.count} time(s) from ${c.other_install_short}, ${why}; first ${at(c.first_at)}, last ${at(c.last_at)}`);
+    }
     break;
   }
   case 'reset-seat': console.log(JSON.stringify(await call('reset-seat', { accessId: id }))); break;

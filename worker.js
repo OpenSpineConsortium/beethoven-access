@@ -20,11 +20,15 @@
 //                    MAIL_STUDENTS "1" the student is e-mailed first at <AccessID>@wayne.edu, the maintainer
 //                    only once they confirm (/confirm), and an unconfirmed request is dropped after 7 days;
 //                    otherwise the maintainer's e-mail says the mailbox is not verified.
-//   GET|POST /decide the page the decision links open, the Move and Withdraw links of the e-mail about a
-//                    second installation, and the Done, invited links (the Approve page and the daily
-//                    reminder). A link is a signed capability (DECIDE_KEY, HMAC-SHA256, 14 days, one use) tied
-//                    to the version of the request or refusal it was sent for; GET only asks the question, the
-//                    page's one button POSTs the decision, which goes through the same code as the admin routes.
+//   GET|POST /decide the page the decision links open, the one Withdraw link of the notice about a new
+//                    installation, and the Done, invited links (the Approve page and the daily reminder). A
+//                    link is a signed capability (DECIDE_KEY, HMAC-SHA256, 14 days, one use) whose ref ties it
+//                    to the version of what it was sent for: a request's links to that version of the request,
+//                    the Withdraw link to the notice on record (notice:<AccessID>, the last e-mail about the
+//                    account's installations, so an older notice's link answers "replaced"), the Done, invited
+//                    links to the approval. GET only asks the question, the page's one button POSTs the
+//                    decision, which goes through the same code as the admin routes. The Move link of the
+//                    e-mails sent until 2026-10-11 answers "out of date" and is never acted on.
 //   cron (scheduled) once a day: when an account approved for Beethoven has waited more than an hour without
 //                    being marked invited to the Google Group Beethoven-users, one e-mail to the maintainer lists
 //                    them with a Done, invited link each (one a day at most; only the name REMINDER_FROM sends).
@@ -511,11 +515,14 @@ async function sendMail(env, { subject, text, html, to: toGiven }) {
   }
 }
 
-// The links in the e-mails. token = base64url(JSON {v, access_id, decision, nonce, exp} plus install_id for
-// a Move, and ref: the version of the request (a decision, the CV, a confirmation), of the refusal e-mail (Move,
-// Withdraw) or of the approval (Done, invited) it was sent for) + "." + base64url(HMAC-SHA256 of that first
-// part, key DECIDE_KEY). exp is in seconds. The links of one e-mail that decide share a nonce, so once one is
-// used all are spent; the CV link, the confirmation link and each Done, invited link have their own.
+// The links in the e-mails. token = base64url(JSON {v, access_id, decision, nonce, exp, ref}) + "." +
+// base64url(HMAC-SHA256 of that first part, key DECIDE_KEY). ref is the version of what the link was sent
+// for: the request (a decision, the CV, a confirmation), the notice about a new installation (Withdraw,
+// notice:<AccessID>) or the approval (Done, invited). exp is in seconds. install_id in a token is only the
+// retired Move path's (the e-mails sent until 2026-10-11): no link made now carries one, and RETIRED_DECISIONS
+// answers such a link as out of date. The three decision links of a request e-mail share a nonce, so once
+// one is used all are spent; the notice e-mail has one link; the CV link, the confirmation link and each
+// Done, invited link have their own.
 const decideKey = (env) => crypto.subtle.importKey('raw', ascii(env.DECIDE_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 
 async function decideToken(env, claim) {
@@ -1917,7 +1924,7 @@ async function admin(request, env, url, ctx) {
       // portal, there from every installation, recording none; refused from any other portal, off the approved list,
       // no key from /trial (approvedFor). any: false makes it an ordinary approval again
       if (!approved) return reply(404, { error: `${accessId} is not approved; use add` });
-      if (typeof body.any !== 'boolean') return reply(400, { error: 'any is true (every installation) or false (one installation)' });
+      if (typeof body.any !== 'boolean') return reply(400, { error: 'any is true (the store reviewers\' mock account: approved on a localhost portal only, from any installation, none recorded, and nowhere else) or false (the rule for everyone else)' });
       const rec = { ...approved };
       if (body.any) rec.any_installation = true;
       else delete rec.any_installation;

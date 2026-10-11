@@ -208,16 +208,20 @@ dates and no identifier or fingerprint; none of it is on a public route.
 
 Approved: works; the answer is cached for 24 hours and kept up to 7 days when the service cannot be
 reached. Not approved: the strip's one button reads "Ask for access"; the answer is cached for 10
-minutes. `other_account`: not approved, as any no. `update_required`: "Install the current Beethoven from
-the lab's private listing." `other_installation`, which the service answered until 2026-10-11, is still
-read as before ("This account is already set up on another computer. Ask your lab lead to move it here."
-with no button), for a service deployed before that day. Re-checked on a click of the icon once the last answer is a day old or was
-no, and about once a day, and only after the agreement is accepted, the portal is connected and the
-dashboard identity is known. Approval withdrawn (Remove on the admin page, `admin.mjs remove`, or
-Withdraw approval in the e-mail) means the next check answers no and the extension stops starting
-workers and says so. Because an approval is cached for a day, a withdrawal reaches an installation that
-was approved at its next check after that day, and up to 7 days later when it cannot reach the service.
-A new installation of an approved account needs no step of anyone's: it is approved at its first check.
+minutes. `other_account`: "This installation of Beethoven is already set up for another account. Ask
+your lab lead to move it to yours." with no button; the maintainer's remedy is `reset-seat` or
+`remove` on the other account, which frees the installation (there is no Move). `update_required`:
+"Install the current Beethoven from the lab's private listing." `other_installation`, which the
+service answered until 2026-10-11, is still read as before ("This account is already set up on
+another computer. Ask your lab lead to move it here." with no button), for a service deployed before
+that day. Re-checked on a click of the icon once the last answer is a day old or was no, and about
+once a day, and only after the agreement is accepted, the portal is connected and the dashboard
+identity is known. Approval withdrawn (Remove on the admin page, `admin.mjs remove`, or Withdraw
+approval in the e-mail) means the next check answers no and the extension stops starting workers and
+says so. Because an approval is cached for a day, a withdrawal reaches an installation that was
+approved at its next check after that day, and up to 7 days later when it cannot reach the service.
+A new installation of an approved account needs no step of anyone's: it is approved at its first
+check.
 
 ## The VS Code edition
 

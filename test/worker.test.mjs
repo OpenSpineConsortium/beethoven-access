@@ -1823,6 +1823,7 @@ test('one installation serves one account: another approved account is refused t
   assert.equal(await env.ACCESS.get('seat:bb0002'), null);
   const c = await env.ACCESS.get('conflict:bb0002', 'json');
   assert.deepEqual([c.kind, c.count, c.other_install_short], ['other_account', 1, short(IA)]);
+  assert.equal(env.ACCESS.ttl.get('conflict:bb0002'), 365 * 86400, 'a refusal is kept twelve months');
   assert.equal((await env.ACCESS.get(`install:${IA}`, 'json')).access_id, 'aa0001', 'the installation stays with the first account');
   // bb0002 on its own installation is fine
   assert.equal((await check(env, { access_id: 'bb0002', install_id: IB })).body.approved, true);
