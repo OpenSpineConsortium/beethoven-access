@@ -382,7 +382,7 @@
     "the maintainer, from the links in the e-mails"
    ],
    "auth": "link",
-   "summary": "Approve for Beethoven, Lab membership only, Deny, Move the approval, Withdraw approval, Done, invited",
+   "summary": "Approve for Beethoven, Lab membership only, Deny, Withdraw approval, Done, invited (the Move link of the e-mails sent until 2026-10-11 answers out of date)",
    "methods": {
     "GET": {
      "answers": {
@@ -510,7 +510,7 @@
     "admin.mjs"
    ],
    "auth": "admin-token",
-   "summary": "requests, approvals, denials, revoked key ids, access checks, seats and refusals (the admin page's list)",
+   "summary": "requests, approvals, denials, revoked key ids, access checks, installations (as counts and dates) and refusals (the admin page's list)",
    "methods": {
     "GET": {
      "answers": {
@@ -874,7 +874,7 @@
     "admin.mjs"
    ],
    "auth": "admin-token",
-   "summary": "the installation an account is bound to, by fingerprint, and its refusals",
+   "summary": "the installations an account has asked from, by fingerprint, and its refusals",
    "methods": {
     "POST": {
      "answers": {
@@ -903,7 +903,7 @@
     "admin.mjs"
    ],
    "auth": "admin-token",
-   "summary": "clear the binding: the next installation to check gets the account",
+   "summary": "clear the account's installations: each is recorded again at its next check, and an installation freed may serve another account",
    "methods": {
     "POST": {
      "answers": {

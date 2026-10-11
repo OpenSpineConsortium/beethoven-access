@@ -6,8 +6,10 @@ Open OnDemand portal with their university account; the extension reads the acco
 dashboard shows for that session and asks this service whether that account is approved. The answer
 comes from the same approved list the admin page manages for Beethoven for VS Code (KV
 `approved:<AccessID>`), so one approval serves both editions. Since 2026-09-30 (Beethoven 8.0.0) the
-check also carries the installation's random identifier, and one approved account works on one
-installation ([Installations](#installations)). This file is the contract as built in `worker.js`
+check also carries the installation's random identifier. Since 2026-10-11 an approved account works on
+any number of its own installations, which the service records, and one installation serves one
+account; from 2026-09-30 until then one approved account worked on one installation, and a second was
+refused ([Installations](#installations)). This file is the contract as built in `worker.js`
 (`accessCheck`, `installationRule`) and pinned by `test/worker.test.mjs`; both sides code to exactly this.
 The same contract for programs, with the JSON Schemas and answers the real Worker gave, is
 `interface/contract/` (`routes.json`, `access-check.request.schema.json`, `access-check.answer.schema.json`,
@@ -59,8 +61,7 @@ no-store` and `content-type: application/json`; none carries `access-control-all
 | 204 | none, with `access-control-allow-methods: POST, OPTIONS`, `access-control-allow-headers: content-type`, `access-control-max-age: 600` | `OPTIONS` (a preflight, should a browser send one) |
 | 200 | `{"approved":true,"access_id":"st1234","checked":"<ISO time>","until":null}` | the account is on the approved list with the grant `extension` and the installation rule lets it through; `until` is the approval's end date when the record has one (none does today) |
 | 200 | `{"approved":false,"access_id":"st1234","requestPage":"https://openspineconsortium.com/beethoven/request.html"}` | the account is not on the list (never approved, pending, denied or removed), is a lab member only (grants `["lab"]`), is the store reviewers' mock account checked from a portal that is not local (The decision, step 2), or the name is not one the list can hold. `requestPage` is `BEETHOVEN_REQUEST_PAGE` in `wrangler.toml` for product `bridge` or `beethoven`, and `REQUEST_PAGE` for any other; both are `https://openspineconsortium.com/beethoven/request.html` since 2026-09-30, the one request page of both editions (before, `REQUEST_PAGE` was `/ashley/request.html`, which now redirects there) |
-| 200 | `{"approved":false,"access_id":"st1234","reason":"other_installation","requestPage":"..."}` | approved, but bound to another installation. What the extension says: "This account is already set up on another computer. Ask your lab lead to move it here." (no button) |
-| 200 | `{"approved":false,"access_id":"st1234","reason":"other_account","requestPage":"..."}` | approved, but this installation is bound to another approved account (one installation serves one account) |
+| 200 | `{"approved":false,"access_id":"st1234","reason":"other_account","requestPage":"..."}` | approved, but this installation is on another approved account's record (one installation serves one account) |
 | 200 | `{"approved":false,"access_id":"st1234","reason":"update_required","requestPage":"..."}` | approved, but the check carries no `install_id` (a build before 8.0.0) and `REQUIRE_INSTALL_ID` is not `"0"`. What the extension says: "Install the current Beethoven from the lab's private listing." |
 | 400 | `{"error":"..."}` | a malformed body (see the table above), or not JSON |
 | 405 | `{"error":"POST the check here"}` | any method but POST and OPTIONS |
@@ -70,7 +71,10 @@ no-store` and `content-type: application/json`; none carries `access-control-all
 
 `reason` appears only on a refusal of an approved account, and before `requestPage`; a plain no has
 none, so a build that does not know the field reads every refusal as a plain no. `requestPage` is on
-every no, so older builds always have a page to open.
+every no, so older builds always have a page to open. A third reason, `other_installation` (approved,
+but bound to another installation), was answered from 2026-09-30 to 2026-10-11 and is not any more: an
+approved account works on every installation of its own. The extension still reads it, unchanged, for a
+service deployed before that day.
 
 The extension opens `requestPage` with `?access_id=<account>` appended; `request.html` fills its
 first field from that and sends nothing until the person presses the button.
@@ -88,8 +92,8 @@ In order:
    `admin.mjs seat-rule <id> any`; today `st1234`, the name the mock portal signs in as). It is an
    approval **only when `portal` is `localhost` or a name ending in `.localhost`** (a port is allowed):
    the reviewers' mock portal runs on their own machine. There it is approved from any installation,
-   with or without `install_id`, and binds none. From any other portal it is not approved at all: the
-   answer is the plain no an unknown account gets (no `reason`), no seat is written or changed, no
+   with or without `install_id`, and records none. From any other portal it is not approved at all: the
+   answer is the plain no an unknown account gets (no `reason`), no installation is recorded or changed, no
    refusal is recorded and nobody is e-mailed; only the `seen` record of the check is kept, as for any
    check. A check that names no portal is refused as malformed (400) and is never taken for a local
    one. The reason: `st1234` has the shape of a real Wayne State AccessID, so a real person may hold it,
@@ -112,100 +116,108 @@ reach every edge, so a check right after a click on the admin page may still see
 
 ## Installations
 
-One approved account works on one installation of Beethoven, and one installation works for one
-account. The installation is named by `install_id`, the random identifier the extension made when it
-was installed; nothing about the computer goes into it, and a reinstall is a new installation.
+An approved account works on any number of its own installations of Beethoven, and one installation
+works for one account (the owner's decision of 2026-10-11; from 2026-09-30 until then one approved
+account worked on one installation, and a second was refused with reason `other_installation`). The
+installation is named by `install_id`, the random identifier the extension made when it was installed;
+nothing about the computer goes into it, and a reinstall is a new installation. The service keeps, per
+account, the ten installations most recently seen: identifier, first and last check, product and
+version; it reads nothing else about them.
 
 | The check | The answer | What is written |
 |---|---|---|
 | no `install_id`, `REQUIRE_INSTALL_ID` not `"0"` | `reason: "update_required"` | nothing but `seen` |
 | no `install_id`, `REQUIRE_INSTALL_ID` `"0"` | yes, from the approved list alone (builds before 8.0.0 keep working) | nothing but `seen` |
-| the account has no seat, and the installation is not bound to another account | yes: the installation is bound | `seat:<access_id>` and `install:<install_id>` |
-| the seat names this installation | yes | the seat's `last_seen`, `product`, `version` |
-| the seat names another installation | `reason: "other_installation"`; the seat is unchanged | `conflict:<access_id>`; one e-mail to the maintainer per account a day (below) |
-| the account has no seat, and this installation is bound to another account whose seat still names it | `reason: "other_account"` | `conflict:<access_id>` (kind `other_account`); no e-mail |
+| the installation is on the account's record | yes | its `last_seen`, `product`, `version` |
+| the installation is not on the record, and serves no other account | yes: it joins the record | `seat:<access_id>` (the installation added; beyond ten, the one least recently seen is dropped and its index entry deleted) and `install:<install_id>`; `installed:<access_id>` once; when the record already held another installation, `notice:<access_id>` and one e-mail to the maintainer per account a day (below) |
+| the installation is on another account's record (its `install:<install_id>` names that account, and that account's record lists it) | `reason: "other_account"`; nothing joins | `conflict:<access_id>` (kind `other_account`); no e-mail |
 
-The e-mail about a second installation goes to `NOTIFY_TO`: "<name> (<AccessID>) asked from a second
-installation; it was refused.", the installation in use and the refused one by fingerprint (the first
-8 hexadecimal characters of a SHA-256 of the identifier), the refused one's version and portal, the
-number of refusals, and two signed one-use links (14 days, one nonce between them, GET shows a page and
-only its button acts): **Move the approval to the new installation** (the seat names the refused
-installation from then on; the old one is refused at its next check) and **Withdraw approval** (the
-same as `admin.mjs remove`). The Move link carries the refused installation's identifier inside its
-signed token; the e-mail's text shows only fingerprints.
+The e-mail about a new installation goes to `NOTIFY_TO`. It is a notice, not a refusal: "<name>
+(<AccessID>) is using Beethoven on a new installation; nothing was refused.", the installations on record
+(how many; each by fingerprint, the first 8 hexadecimal characters of a SHA-256 of the identifier, with
+its first and last check and version), the new one (fingerprint, time, version, portal), and one signed
+one-use link (14 days; GET shows a page and only its button acts): **Withdraw approval**, the same as
+`admin.mjs remove`. The text shows only fingerprints. Its advice: a new installation is a new computer,
+a new browser profile, Chrome Sync putting Beethoven on another computer, or a reinstall; nothing was
+refused, and the approval works there from its first check; if the account is being shared, withdraw
+it; the account name in a check is not proved, so ask the person first; doing nothing keeps Beethoven
+working on every installation that asks. Without `DECIDE_KEY` the e-mail carries no link and names
+`admin.mjs remove` and `reset-seat` instead.
 
-Since 2026-09-30 afternoon both links also carry `ref`, the version of the e-mail they came in, which
-the conflict record keeps once that e-mail has gone. They act only while it is the one on record, so:
+The link carries `ref`, the version of the e-mail it came in, which the notice record keeps once that
+e-mail has gone. It acts only while it is the one on record, so:
 
-- a later e-mail about the same account (the next day's, after another refusal) replaces them: the
-  older links answer "This e-mail was replaced ... see the newer e-mail" and change nothing;
-- once the refusal is settled another way (moved, seat reset, approval removed) the conflict record is
-  gone and both links answer that the refusal is no longer on record;
-- a link without `ref` (an e-mail sent before the change) answers "This link is out of date".
+- a later e-mail about the same account (the next day's, after another new installation) replaces it:
+  the older link answers "This e-mail was replaced ... see the newer e-mail" and changes nothing;
+- once the account's installations are reset or the approval removed, the notice record is gone and the
+  link answers that the e-mail is no longer on record;
+- a link without `ref` (an e-mail sent before 2026-09-30 afternoon) answers "This link is out of date".
 
-**Move refuses while the refused installation is another account's seat.** One installation serves one
-account, so when the installation a Move would bind is the seat of another approved account (its
-`install:<install_id>` names that account and that account's seat still names it), the link opens a
-plain page, "This installation is in use by another account", naming the other account and what to
-do: withdraw that other approval first (Remove on the admin page, or `admin.mjs remove <other>`), or
-reset its seat if it no longer uses that installation, then open the link again. Nothing is written
-and the link is not spent, on the question page and on the button alike.
+Until 2026-10-11 the e-mail was about a refusal and carried a second link, **Move the approval to the
+new installation**. A Move link from one of those e-mails still verifies and answers "This link is out
+of date", on GET and POST alike: there is nothing to move, since the installation it names is approved
+at its first check after that day. It is never acted on, and the decision `move` is answered no other
+way.
 
-The maintainer's commands: `admin.mjs seat <id>` (the binding and the last refusal, by fingerprint),
-`admin.mjs reset-seat <id>` (clears the binding: the next installation to check gets the account),
-`admin.mjs seat-rule <id> any|one`, and `remove`, which deletes the seat with everything else,
-including the account's access-check records.
+The maintainer's commands: `admin.mjs seat <id>` (the installations on record, one a line by
+fingerprint, oldest first, with their first and last check, product and version, and the last refusal),
+`admin.mjs reset-seat <id>` (clears the record and every index entry: each installation is recorded
+again at its next check, and one freed may serve another account from then on), `admin.mjs seat-rule
+<id> any|one`, and `remove`, which deletes the record with everything else, including the account's
+access-check records. `admin.mjs list` shows how many installations each approval has, when the oldest
+was first seen and when the newest was last seen.
 
 What this does not do: the service answers yes or no to what the extension sends; it proves nothing
-about the computer. A modified copy of the extension could skip the check or send another
-installation's identifier copied out of its storage. The rule stops casual sharing (a copy handed to a
-friend, one account on two computers, two accounts on one copy) and tells the maintainer when it
-happens; it does not stop someone determined to get around it. Nor does the service know who sends
-a check: the account name is whatever the check says, so anyone who knows an approved AccessID can
-send checks in its name. Before the person's own first check, that can bind the account to a
-stranger's identifier (the person is then refused until the maintainer moves the approval); after
-it, it produces refusals and the e-mail about a second installation. A refusal is not proof of
-sharing: ask the person before withdrawing. And while `REQUIRE_INSTALL_ID` is `"0"` (as deployed on
-2026-09-30), none of this holds for a build before 8.0.0: it sends no identifier and is answered from
-the approved list alone, on any number of computers.
+about the computer. A modified copy of the extension could skip the check or send another installation's
+identifier copied out of its storage. The rule stops two accounts on one installation (`other_account`)
+and tells the maintainer when an account turns up on a new one; it does not stop one account on several
+computers, which is allowed, nor someone determined to get around it. Nor does the service know who
+sends a check: the account name is whatever the check says, so anyone who knows an approved AccessID can
+send checks in its name; that adds installations to the person's record and causes the e-mail, and
+nothing else. A notice is not proof of sharing: ask the person before withdrawing. And while
+`REQUIRE_INSTALL_ID` is `"0"` (as deployed on 2026-09-30), a build before 8.0.0 sends no identifier and
+is answered from the approved list alone, recorded nowhere.
 
-Things that make a new installation, each refused until the maintainer moves the approval or resets the
-seat: a reinstall, a second Chrome profile, Chrome Sync installing the extension on another computer, a
-new computer. Two installations checking for the first time within the same minute can both be bound
-(KV is eventually consistent; the one written last keeps the seat and the other is refused at its next
-check).
+Two accounts checking from one installation for the first time within the same minute can both record
+it (KV is eventually consistent; the index written last names the account the other is refused for at
+its next check). A refusal of kind `other_installation` recorded before 2026-10-11 stays on the admin
+routes until a new installation of that account is approved, which deletes it, or until `reset-seat` or
+`remove`.
 
 ## What the service records
 
 | Key | Value | Kept |
 |---|---|---|
 | `seen:<product>:<access_id>` | `access_id`, `product`, `portal`, `version` (of the last check), `first_seen`, `last_seen`, `checks` (how many), `approved` (the last decision), `reason` (when the last check was refused for one), `ip_hash` (salted SHA-256 of the address, 32 hex characters, salt `IP_SALT`, the same for both Worker names, kept in the vendor folder's `ip_salt`; a new salt only when that file is replaced), `changed_at` (when the decision last changed) | until the account is removed (Remove, `admin.mjs remove`, or Withdraw approval deletes the records of every product for that account, since 2026-09-30 afternoon); a check after that starts a new record |
-| `seat:<access_id>` | `install_id` (the bound installation's identifier), `first_seen`, `last_seen`, `product`, `version`; after a move also `moved_at` and `by` | until moved, reset or removed |
-| `install:<install_id>` | `access_id`, `bound_at`: which account the installation is bound to | as long as that seat |
-| `installed:<access_id>` | `at`, `product`, `version`: when the account's first installation bound it (the lifecycle's "installed"; a check never writes the approved record itself, so a check that raced a removal cannot bring the approval back) | until removed; a reset or a move keeps it |
-| `conflict:<access_id>` | `kind` (`other_installation` or `other_account`), `count`, `first_at`, `last_at`, `other_install_short` (the fingerprint of the last refused installation), `ref` (the version of the last e-mail about it) | 12 months from the last refusal, or until moved, reset or removed |
-| `conflict_notified:<access_id>` | when the last e-mail about a second installation went | 24 hours |
+| `seat:<access_id>` | `installs`: up to ten `{install_id, first_seen, last_seen, product, version}`, the installations the account has asked from, oldest first (a record written before 2026-10-11 holds its one installation at the top level, with `moved_at` and `by` after a Move, and is rewritten in this shape at the account's next check) | until reset or removed; an installation beyond the ten most recently seen is dropped |
+| `install:<install_id>` | `access_id`, `bound_at`: which account the installation serves | as long as it is on that account's record |
+| `installed:<access_id>` | `at`, `product`, `version`: when the account's first installation checked in (the lifecycle's "installed"; a check never writes the approved record itself, so a check that raced a removal cannot bring the approval back) | until removed; a reset keeps it |
+| `conflict:<access_id>` | `kind` (`other_account`; `other_installation` only on a record from before 2026-10-11, which goes when a new installation of the account is approved), `count`, `first_at`, `last_at`, `other_install_short` (the fingerprint of the installation last refused) | 12 months from the last refusal, or until reset or removed |
+| `notice:<access_id>` | `ref` (the version of the last e-mail about a new installation; its Withdraw link acts only while it is the one on record), `sent_at`, `install_short` (the new installation's fingerprint), `installations` (how many were on record then) | 12 months, or until reset or removed |
+| `install_notified:<access_id>` | when the last e-mail about a new installation went (`conflict_notified:<access_id>` until 2026-10-11) | 24 hours |
 | `chk:<access_id>:<day>`, `chkip:<ip_hash>:<day>` | the day's counters | 2 days |
 
 The network address itself is never stored, and an installation that was refused is kept only as its
-fingerprint. A refused check (400, 413, 429, 503) writes no `seen` record; only the per-connection
+fingerprint; the identifiers on an account's record leave the service nowhere (`admin.mjs seat` shows
+fingerprints). A refused check (400, 413, 429, 503) writes no `seen` record; only the per-connection
 counter is touched. The checks are listed, newest first, as `checks` in `GET /admin/list` and
-`admin.mjs list`, and the seats and refusals as `seats` and `conflicts` there, with counts and dates
-and no identifier or fingerprint; none of it is on a public route.
+`admin.mjs list`, and the installations and refusals as `seats` and `conflicts` there, with counts and
+dates and no identifier or fingerprint; none of it is on a public route.
 
 ## What the extension does with the answer
 
 Approved: works; the answer is cached for 24 hours and kept up to 7 days when the service cannot be
 reached. Not approved: the strip's one button reads "Ask for access"; the answer is cached for 10
-minutes. `other_installation`: the strip says "This account is already set up on another computer. Ask
-your lab lead to move it here." with no button. `update_required`: "Install the current Beethoven from
-the lab's private listing." Re-checked on a click of the icon once the last answer is a day old or was
+minutes. `other_account`: not approved, as any no. `update_required`: "Install the current Beethoven from
+the lab's private listing." `other_installation`, which the service answered until 2026-10-11, is still
+read as before ("This account is already set up on another computer. Ask your lab lead to move it here."
+with no button), for a service deployed before that day. Re-checked on a click of the icon once the last answer is a day old or was
 no, and about once a day, and only after the agreement is accepted, the portal is connected and the
 dashboard identity is known. Approval withdrawn (Remove on the admin page, `admin.mjs remove`, or
 Withdraw approval in the e-mail) means the next check answers no and the extension stops starting
-workers and says so. Because an approval is cached for a day, a withdrawal or a move reaches an
-installation that was approved at its next check after that day, and up to 7 days later when it
-cannot reach the service.
+workers and says so. Because an approval is cached for a day, a withdrawal reaches an installation that
+was approved at its next check after that day, and up to 7 days later when it cannot reach the service.
+A new installation of an approved account needs no step of anyone's: it is approved at its first check.
 
 ## The VS Code edition
 
@@ -262,7 +274,7 @@ allow it); the page shows the sentence as it is.
   "denied":   [ <denial> ... ],
   "revoked":  [ "L-..." ... ],
   "checks":   [ <seen record> ... ],  newest first (What the service records)
-  "seats":    [ { accessId, first_seen, last_seen, product, version, moved_at? } ... ],
+  "seats":    [ { accessId, installations, first_seen, last_seen, product, version } ... ],
   "conflicts":[ { accessId, kind, count, first_at, last_at } ... ]
 }
 ```
@@ -294,10 +306,10 @@ An **approval** (`approved`):
 | `approved_at` | the first approval; `decided_at` and `decision` (`"approve"` or `"lab"`) the latest decision |
 | `submitted_at`, `confirmed_at`, `mailbox` | the lifecycle of the request it came from, when it came from one |
 | `invited_at`, `invited_by` | when it was marked invited to Beethoven-users, and by what (`"e-mail link"`, `"admin"`, `"workspace"`) |
-| `installed_at` | when the first installation bound the account (set once; a move or a reset keeps it) |
-| `seat` | `{ "bound": true, "first_seen", "last_seen", "product", "version", "moved_at"? }` or `{ "bound": false }` |
+| `installed_at` | when the first installation checked in (set once; a reset keeps it) |
+| `seat` | `{ "bound": true, "installations", "first_seen", "last_seen", "product", "version" }` or `{ "bound": false }`: how many installations the account has asked from (the ten most recently seen are kept), the oldest one's first check, the newest one's last check and what it runs (since 2026-10-11; before, one installation and `moved_at` after a Move) |
 | `conflicts` | the number of refusals on record (0 when none); `conflict_last_at` the last one |
-| `any_installation` | `true` only for the store reviewers' mock account: approved in an access check from a localhost portal only (from any installation, binding none), refused from any other portal, not on the approved list, no key from `/trial`, never in the daily reminder. Absent on every other approval. The page's Installation column says "Any installation: binds none: the store reviewers' mock account, on a localhost portal only", and its stage reads "Store reviewers" while the stage is `approved` |
+| `any_installation` | `true` only for the store reviewers' mock account: approved in an access check from a localhost portal only (from any installation, recording none), refused from any other portal, not on the approved list, no key from `/trial`, never in the daily reminder. Absent on every other approval. The page's Installation column says "Any installation: binds none: the store reviewers' mock account, on a localhost portal only", and its stage reads "Store reviewers" while the stage is `approved` |
 | `lids` | the licence ids issued to them by `/trial` |
 
 **`GET /admin/allowlist`** answers 200 with `{"about":"AccessIDs approved to use Beethoven","accessIds":[...]}`:
@@ -316,10 +328,10 @@ A **denial** (`denied`): `accessId`, `name`, `email`, `google_account`, `note`, 
 | `approve` | `{ accessId, grants?, note? }` (`grants` absent = `["extension","lab"]`; `["lab"]` = Lab only) | `{ status: "approved", accessId, record, invite }`; 404 when there is no request | the Approve buttons. `invite` is `null` for Lab only; otherwise `{ group: "Beethoven-users", members_url, google_account (null when the older form gave none), invited: bool, mode: "manual"\|"workspace", address? (workspace), invited_at? (set when the service added them), error? (why the service could not add them) }`. When `invited` is false the page shows "Next: add <google_account> to the Google Group Beethoven-users", the address with a copy button, the members page and a Mark invited button |
 | `deny` | `{ accessId, reason? }` | `{ status: "denied", accessId, lab_member? }`; 409 when approved for Beethoven | Deny |
 | `invited` | `{ accessId }`, or `{ accessId, clear: true }` | `{ status: "invited", accessId, invited_at }` (`already: true` added when it was marked before; the date is not changed) or `{ status: "not-invited", accessId }`; 404 when not approved, 409 when lab only | Mark invited (stamps `invited_at`, `invited_by: "admin"`) |
-| `reset-seat` | `{ accessId }` | `{ status: "reset", accessId, had_seat }` | Reset seat: the next installation to check gets the account |
-| `remove` | `{ accessId }` | `{ status: "removed", accessId, revoked: [lids] }` | Remove: every record of the person (approved, pending, denied, seat, installed, conflict, CV, and `seen:<product>:<accessId>` for every product), keys revoked |
+| `reset-seat` | `{ accessId }` | `{ status: "reset", accessId, had_seat }` | Reset seat: the account's installations are forgotten (the record, every index entry, the refusal and the notice); each is recorded again at its next check, and one freed may serve another account |
+| `remove` | `{ accessId }` | `{ status: "removed", accessId, revoked: [lids] }` | Remove: every record of the person (approved, pending, denied, seat with every index entry, installed, conflict, notice, CV, and `seen:<product>:<accessId>` for every product), keys revoked |
 | `cv` | `{ accessId }` | the file itself: `content-type` application/pdf or a Word type, `content-disposition: attachment; filename="<accessId>-cv.<ext>"` (exposed to the page), 404 JSON when none | the CV link: fetch, make a blob URL, open or save it |
-| `seat` | `{ accessId }` | `{ accessId, any_installation, seat: {install_short, ...} \| null, conflict: {...} \| null }` | the fingerprints, for the command line |
+| `seat` | `{ accessId }` | `{ accessId, any_installation, installs: [ {install_short, first_seen, last_seen, product, version} ... ], conflict: {kind, count, first_at, last_at, other_install_short} \| null }` | the installations by fingerprint, oldest first (empty when none), and the last refusal, for the command line |
 | `add`, `grant`, `seat-rule`, `revoke-lid`, `notify-test` | as before (README.md, "The approved list, day to day") | | |
 
 The page never sees an installation identifier or a decision link: the lists carry dates, counts and

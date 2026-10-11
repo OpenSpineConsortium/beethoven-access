@@ -185,7 +185,7 @@ const SCENARIOS = [
     return check(env, 'ab1234', INSTALL_A);
   }],
   ['access-check-not-approved', '/access_check', 'An account not on the list: a plain no with the request page', (env) => check(env, 'zz9999', INSTALL_A)],
-  ['access-check-other-installation', '/access_check', 'An approved account from a second installation: no, reason other_installation', async (env) => {
+  ['access-check-second-installation', '/access_check', 'An approved account from a second installation of its own: yes, and that installation joins its record (until 2026-10-11 this was refused other_installation)', async (env) => {
     await admin(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
     await check(env, 'ab1234', INSTALL_A);
     return check(env, 'ab1234', INSTALL_B);
@@ -279,13 +279,13 @@ const SCENARIOS = [
     await admin(env, 'add', { accessId: 'st1234', name: 'Store reviewers' });
     return admin(env, 'seat-rule', { accessId: 'st1234', any: true });
   }],
-  ['admin-seat', '/admin/seat', 'The installation an account is bound to, by fingerprint, and its refusals', async (env) => {
+  ['admin-seat', '/admin/seat', 'The installations an account has asked from, by fingerprint, oldest first, and its refusals', async (env) => {
     await admin(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
     await check(env, 'ab1234', INSTALL_A);
     await check(env, 'ab1234', INSTALL_B);
     return admin(env, 'seat', { accessId: 'ab1234' });
   }],
-  ['admin-reset-seat', '/admin/reset-seat', 'Clear the binding', async (env) => {
+  ['admin-reset-seat', '/admin/reset-seat', 'Clear the account\'s installations', async (env) => {
     await admin(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
     await check(env, 'ab1234', INSTALL_A);
     return admin(env, 'reset-seat', { accessId: 'ab1234' });
