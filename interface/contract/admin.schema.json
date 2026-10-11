@@ -187,12 +187,18 @@
             "type": "object",
             "required": [
              "bound",
+             "installations",
              "first_seen",
              "last_seen"
             ],
             "properties": {
              "bound": {
               "const": true
+             },
+             "installations": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "how many installations the account has asked from (the ten most recently seen are kept); first_seen is the oldest one's first check and last_seen the newest one's last"
              }
             }
            },
@@ -273,11 +279,17 @@
      "items": {
       "type": "object",
       "required": [
-       "accessId"
+       "accessId",
+       "installations"
       ],
       "properties": {
        "accessId": {
         "$ref": "common.schema.json#/$defs/access_id"
+       },
+       "installations": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "how many installations the account has asked from; no identifier and no fingerprint here"
        }
       }
      }
@@ -1053,7 +1065,7 @@
    "required": [
     "accessId",
     "any_installation",
-    "seat",
+    "installs",
     "conflict"
    ],
    "properties": {
@@ -1063,27 +1075,30 @@
     "any_installation": {
      "type": "boolean"
     },
-    "seat": {
-     "anyOf": [
-      {
-       "type": "null"
-      },
-      {
-       "type": "object",
-       "required": [
-        "install_short",
-        "first_seen",
-        "last_seen"
-       ],
-       "properties": {
-        "install_short": {
-         "type": "string",
-         "pattern": "^[0-9a-f]{8}$",
-         "description": "a fingerprint of the installation identifier, never the identifier"
-        }
+    "installs": {
+     "type": "array",
+     "description": "the installations the account has asked from, oldest first, the ten most recently seen; empty when none",
+     "items": {
+      "type": "object",
+      "required": [
+       "install_short",
+       "first_seen",
+       "last_seen"
+      ],
+      "properties": {
+       "install_short": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}$",
+        "description": "a fingerprint of the installation identifier, never the identifier"
+       },
+       "first_seen": {
+        "$ref": "common.schema.json#/$defs/time"
+       },
+       "last_seen": {
+        "$ref": "common.schema.json#/$defs/time"
        }
       }
-     ]
+     }
     },
     "conflict": {
      "anyOf": [
@@ -1099,9 +1114,10 @@
        "properties": {
         "kind": {
          "enum": [
-          "other_installation",
-          "other_account"
-         ]
+          "other_account",
+          "other_installation"
+         ],
+         "description": "other_account: the account asked from an installation that serves another account. other_installation only on a record written before 2026-10-11, when a second installation of the account was refused; such a record goes when a new installation of the account is approved, or with reset-seat or remove"
         },
         "count": {
          "type": "integer",

@@ -27,7 +27,7 @@ KEY_PREFIX = "ashley"
 # "0": an access check without install_id (every Beethoven before 8.0.0) is still answered from the approved
 # list alone, so the builds in use keep working. Set it to "1" once Beethoven 8.0.0 is on the private
 # listing and installed; from then on such a check is refused with reason update_required. A check that
-# carries install_id is held to one installation per account either way. Deploy both names after a change.
+# carries install_id has its installation recorded either way. Deploy both names after a change.
 REQUIRE_INSTALL_ID = "0"
 # "1": mailbox confirmation is required. A request is first e-mailed to the student at <AccessID>@wayne.edu
 # with a "Confirm it is you" link and reaches the maintainer only when they use it; one not confirmed is

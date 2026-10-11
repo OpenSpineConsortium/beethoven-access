@@ -64,6 +64,7 @@
      "installed_at": "2026-10-07T12:00:00.000Z",
      "seat": {
       "bound": true,
+      "installations": 1,
       "first_seen": "2026-10-07T12:00:00.000Z",
       "last_seen": "2026-10-07T12:00:00.000Z",
       "product": "bridge",
@@ -107,6 +108,7 @@
    "seats": [
     {
      "accessId": "ab1234",
+     "installations": 1,
      "first_seen": "2026-10-07T12:00:00.000Z",
      "last_seen": "2026-10-07T12:00:00.000Z",
      "product": "bridge",

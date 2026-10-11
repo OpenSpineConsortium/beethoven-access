@@ -1,7 +1,7 @@
 {
  "vector": "admin-reset-seat",
  "route": "/admin/reset-seat",
- "summary": "Clear the binding",
+ "summary": "Clear the account's installations",
  "request": {
   "method": "POST",
   "path": "/admin/reset-seat",

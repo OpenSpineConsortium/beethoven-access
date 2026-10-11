@@ -59,10 +59,10 @@
     },
     "reason": {
      "enum": [
-      "other_installation",
       "other_account",
       "update_required"
-     ]
+     ],
+     "description": "other_account: this installation serves another approved account; update_required: no install_id while the service requires one. other_installation (a second installation of the account, refused) was answered until 2026-10-11 and is not any more: an approved account works on every installation of its own"
     },
     "requestPage": {
      "$ref": "common.schema.json#/$defs/page"

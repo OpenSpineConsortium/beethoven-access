@@ -1,7 +1,7 @@
 {
  "vector": "admin-seat",
  "route": "/admin/seat",
- "summary": "The installation an account is bound to, by fingerprint, and its refusals",
+ "summary": "The installations an account has asked from, by fingerprint, oldest first, and its refusals",
  "request": {
   "method": "POST",
   "path": "/admin/seat",
@@ -29,20 +29,23 @@
   "body": {
    "accessId": "ab1234",
    "any_installation": false,
-   "seat": {
-    "install_short": "3eb1bd43",
-    "first_seen": "2026-10-07T12:00:00.000Z",
-    "last_seen": "2026-10-07T12:00:00.000Z",
-    "product": "bridge",
-    "version": "15.0.0"
-   },
-   "conflict": {
-    "kind": "other_installation",
-    "count": 1,
-    "first_at": "2026-10-07T12:00:00.000Z",
-    "last_at": "2026-10-07T12:00:00.000Z",
-    "other_install_short": "4ba68aa8"
-   }
+   "installs": [
+    {
+     "install_short": "3eb1bd43",
+     "first_seen": "2026-10-07T12:00:00.000Z",
+     "last_seen": "2026-10-07T12:00:00.000Z",
+     "product": "bridge",
+     "version": "15.0.0"
+    },
+    {
+     "install_short": "4ba68aa8",
+     "first_seen": "2026-10-07T12:00:00.000Z",
+     "last_seen": "2026-10-07T12:00:00.000Z",
+     "product": "bridge",
+     "version": "15.0.0"
+    }
+   ],
+   "conflict": null
   }
  }
 }

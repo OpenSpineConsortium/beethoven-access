@@ -32,7 +32,7 @@ One Cloudflare Worker (`worker.js`) gives Beethoven's two editions five things w
 keep: the list of approved AccessIDs (asked for from the website's request portal, with a Google
 account, a purpose and an optional CV, e-mailed to the maintainer with three decision links, managed
 from an admin page), keys issued in the student's own name to approved people (Beethoven for VS Code),
-a yes-or-no approval check for one account and one installation (Beethoven, the browser extension,
+a yes-or-no approval check for one account from any of its installations (Beethoven, the browser extension,
 which has no keys), error reports filed as issues in the private repository, and the published list of
 withdrawn keys. It runs on the maintainer's own accounts (Cloudflare, GitHub, Resend for the e-mail);
 no student credential other than the Microsoft sign-in token for a key ever reaches it, and that token
@@ -46,7 +46,7 @@ address. The same code runs under two Worker names, `beethoven-access` and `ashl
 |---|---|---|
 | `GET /allowlist` | nobody since 2026-10-01: Beethoven for VS Code read it while `services.json` named it (`beethoven.allowlistUrl`; `ashley.allowlistUrl` in 3.0.0, both empty by default) | an empty list, in the shape of the list Beethoven for VS Code bundles (`extension/media/allowlist.json` there) (`{"about":"The list of approved AccessIDs is not published; ...","accessIds":[]}`), open CORS, cached one minute. Until 2026-10-01 it gave every approved AccessID to anyone, which the browser edition's privacy statement (version 8) does not allow; the maintainer reads the list at `GET /admin/allowlist` |
 | `POST /request` | the request page, `https://openspineconsortium.com/beethoven/request.html` (the browser edition's form sends `product: "bridge"`); `/ashley/request.html`, which older builds open, redirects there | a student asks for access: stored as pending with its CV, e-mailed to the maintainer with three decision links and a CV link (see [The request portal](#the-request-portal)), filed as an issue labelled `beethoven-access-request` when `GITHUB_TOKEN` is set; answers pending, approved or denied |
-| `GET` and `POST /decide?t=<token>` | the links in the e-mails: Approve for Beethoven, Lab membership only, Deny; Move the approval, Withdraw approval; Done, invited (on the Approve page and in the daily reminder) | GET shows one question and one button; the button POSTs the decision. Each link acts only on the version of the request or refusal e-mail it was sent for ([The link](#the-request-portal)) |
+| `GET` and `POST /decide?t=<token>` | the links in the e-mails: Approve for Beethoven, Lab membership only, Deny; Withdraw approval (in the e-mail about a new installation); Done, invited (on the Approve page and in the daily reminder) | GET shows one question and one button; the button POSTs the decision. Each link acts only on the version of the request or notice e-mail it was sent for ([The link](#the-request-portal)); the Move link of the e-mails sent until 2026-10-11 answers out of date |
 | `GET` and `POST /confirm?t=<token>` | the student's "Confirm it is you" link, when `MAIL_STUDENTS` is `"1"` | GET shows the request and one button; the button confirms it and sends it to the maintainer |
 | `GET` and `POST /cv?t=<token>` | the CV link in the maintainer's e-mail | GET shows what the file is and one button; the button answers the file, once |
 | `POST /storage_request` | the lab storage page, `https://openspineconsortium.com/beethoven/storage.html` | someone asks to read named folders of the lab's storage on the grid: stored as a storage request, e-mailed to the maintainer with an Approve read access and a Deny link ([Lab storage, read only](#lab-storage-read-only)); answers pending, approved (they read every folder asked for already) or denied |
@@ -282,14 +282,14 @@ application, or the grid stops following the lists. The free plan covers a lab.
 - Each request and approval carries its lifecycle with times: submitted, confirmed (the mailbox, when
   `MAIL_STUDENTS` is `"1"`), decided (approve, lab or deny), invited, and installed (when the account's
   first installation checks in). The admin page and `admin.mjs list` show each approval's stage in one
-  line: `lab`, `approved` (not invited yet), `invited` or `installed`, with its seat and refusals.
+  line: `lab`, `approved` (not invited yet), `invited` or `installed`, with its installations and refusals.
 - In Beethoven for VS Code the student runs the wizard: the Wayne State sign-in step passes (since 2026-10-01 the
   services file names no list, so the step no longer fetches `/allowlist`), and the trial button asks `/trial` for a
   key, which `/trial` refuses to anyone not approved. The Worker asks Microsoft who they are, requires the approved
   record, and signs a key for `TRIAL_DAYS` days (365) with the trial key; a person can be issued three
   keys a day (a new laptop, a reset), and the id of each is written to their approved record.
-- Remove deletes the record (and the person's seat, installation record, refusals, CV and access-check
-  records) and puts every key issued to that person on the revocation list, which
+- Remove deletes the record (and the person's installations, refusals, CV and access-check records)
+  and puts every key issued to that person on the revocation list, which
   the Worker signs with the trial key and serves at `/revoked`; installations fetch it daily. Withdraw
   one key on its own with the form at the bottom of the admin page (`revoke-lid`).
 - Beethoven, the browser edition, has no keys. The student signs in to their own Open OnDemand
@@ -302,14 +302,17 @@ application, or the grid stops following the lists. The free plan covers a lab.
   the next check answers no and the extension stops starting workers. The checks on record (who, from
   which portal, which version, when, the decision) are the `checks` list in `admin.mjs list` and in
   `GET /admin/list`. [ACCESS_CHECK.md](ACCESS_CHECK.md) is the contract.
-- One approved account, one installation. Beethoven 8.0.0 sends the random identifier it made when it
-  was installed; the first installation to check binds the account, a second one is refused ("This
-  account is already set up on another computer. Ask your lab lead to move it here.") and you get one
-  e-mail a day about it with **Move the approval to the new installation** and **Withdraw approval**.
-  One installation also serves one account. `admin.mjs seat <id>` shows the binding by fingerprint,
-  `admin.mjs reset-seat <id>` frees it, and a reinstall or a new computer is a new installation, so
-  expect to move approvals now and then. [ACCESS_CHECK.md, Installations](ACCESS_CHECK.md#installations)
-  has the rules and what they do not stop.
+- An approved account works on any of its own installations (since 2026-10-11). Beethoven 8.0.0 sends
+  the random identifier it made when it was installed; the service records each installation an
+  account asks from (the ten most recently seen) and approves them all, and when an account turns up on
+  a new one you get one e-mail a day about it, a notice with one link, **Withdraw approval**. One
+  installation serves one account: another account asking from it is refused (`other_account`).
+  `admin.mjs seat <id>` lists the installations by fingerprint, `admin.mjs reset-seat <id>` forgets them
+  (each is recorded again at its next check), and a reinstall, a new browser profile or a new computer is
+  a new installation, which simply works. From 2026-09-30 until 2026-10-11 one account worked on one
+  installation, a second was refused ("This account is already set up on another computer. Ask your lab
+  lead to move it here.") and the e-mail carried a Move link; such a link now answers out of date.
+  [ACCESS_CHECK.md, Installations](ACCESS_CHECK.md#installations) has the rules and what they do not stop.
 - The mock portal the store reviewers run signs in as `st1234`. That record is on the approved list
   (note "store-reviewer mock username") and marked as the store reviewers' mock account with
   `admin.mjs seat-rule st1234 any` (set on 2026-09-30), so each reviewer's own copy is approved by the
@@ -317,8 +320,8 @@ application, or the grid stops following the lists. The free plan covers a lab.
   State AccessID, and a real person may hold it, so since 2026-10-01 the mock account is an approval on
   the reviewers' own machine and nowhere else. An access check for it is approved only when the portal
   it names is `localhost` or a name under `.localhost` (with or without a port), and there from any
-  installation, binding none. From any other portal the answer is the plain no an unknown account gets:
-  no seat is written or changed, no second-installation refusal is recorded and nobody is e-mailed. It
+  installation, recording none. From any other portal the answer is the plain no an unknown account gets:
+  no installation is recorded or changed, no refusal is recorded and nobody is e-mailed. It
   is not on the approved list (`GET /admin/allowlist`), `/trial` issues it no key, and the daily reminder skips it. The admin page
   and `admin.mjs list` still show it, marked as the store reviewers' mock account.
   (From 2026-09-30 afternoon until then, a check for `st1234` from a real portal was treated as an
@@ -526,11 +529,12 @@ records Resend lists at Spaceship; once Resend says Verified, write a sender suc
 **The link.** `https://<worker>/decide?t=<payload>.<signature>`, where `payload` is the base64url of
 the JSON `{"v":1,"access_id":"ab1234","decision":"approve","nonce":"<22 characters>","exp":<seconds>,"ref":"<22 characters>"}`
 and `signature` is the base64url of HMAC-SHA256 over `payload` with `DECIDE_KEY`. `decision` is
-`approve`, `lab` or `deny` in a request e-mail, `move` (which adds `"install_id"`, the installation to
-move to) or `withdraw` in the e-mail about a second installation, and `invited` on the Approve page and
-in the daily reminder; `/cv` takes `cv` and `/confirm` takes `confirm`, and a link of one kind opened at
-another address is "not valid". `ref` is the version the link was sent for: of the request (a
-decision, the CV, a confirmation), of the refusal e-mail (Move, Withdraw; the conflict record keeps
+`approve`, `lab` or `deny` in a request e-mail, `withdraw` in the e-mail about a new installation, and
+`invited` on the Approve page and in the daily reminder (`move`, with `"install_id"`, the installation
+to move to, was in the e-mail about a second installation until 2026-10-11; such a link still verifies
+and answers "This link is out of date"); `/cv` takes `cv` and `/confirm` takes `confirm`, and a link of
+one kind opened at another address is "not valid". `ref` is the version the link was sent for: of the
+request (a decision, the CV, a confirmation), of the notice e-mail (Withdraw; the notice record keeps
 it once the e-mail has gone), or of the approval (Done, invited; an approval removed and made again,
 with `add` or from a newer request, is another approval, so the older button answers "replaced").
 A link whose `ref` is no longer the one on record answers "replaced" (see the newer e-mail),
@@ -662,12 +666,13 @@ installations through `/revoked`.
 | ACCESS | `approved:<AccessID>` | name, e-mail, note, the Google account, when and by whom, the ids of the keys issued, `grants`, `any_installation` when set; the lifecycle: `submitted_at`, `confirmed_at`, `mailbox` and `ref` of the request decided, `decided_at` and `decision` (`approve` or `lab`), `invited_at` and `invited_by` | until removed |
 | ACCESS | `pending:<AccessID>` | name, e-mail, note (the purpose), the Google account, the product that sent them, when first asked (`requested_at`) and when this version was sent (`submitted_at`), the CV's name, kind and size and its SHA-256 (`cv_sha256`, to tell a new CV from the same one), the mailbox status (`not_verified`, `waiting`, `confirmed`) and, once confirmed, when (`confirmed_at`; `verified_at` in records from before 2026-09-30 afternoon), `ref` (the version), and while unconfirmed `expires_at` and, if the confirmation e-mail failed, `confirm_mail: "failed"` | until approved or denied; unconfirmed (`MAIL_STUDENTS` `"1"`), 7 days from the last send |
 | ACCESS | `denied:<AccessID>` | name, e-mail, note, the Google account, when asked, the lifecycle of the request (`submitted_at`, `confirmed_at`, `mailbox`, `ref`), when (`denied_at`, `decided_at`), `decision: "deny"`, and why | until removed or approved |
-| ACCESS | `installed:<AccessID>` | when the account's first installation bound it, and its product and version (the lifecycle's "installed"; its own key, because an access check never writes the approval) | until removed |
+| ACCESS | `installed:<AccessID>` | when the account's first installation checked in, and its product and version (the lifecycle's "installed"; its own key, because an access check never writes the approval) | until removed |
 | ACCESS | `cv:<AccessID>` | the CV's bytes; metadata: name, kind, size, when sent, when decided | 12 months from the request, renewed for 12 months at the confirmation and at the decision; 7 days while the request is unconfirmed; deleted at once on Deny, Remove or Withdraw approval |
-| ACCESS | `seat:<AccessID>` | the installation the account is bound to: its identifier, first and last check, product, version; after a move, when and by whom | until moved, reset or removed |
-| ACCESS | `install:<identifier>` | the account an installation is bound to, and since when | as long as that seat |
-| ACCESS | `conflict:<AccessID>` | refusals: kind, count, first and last, the fingerprint of the last refused installation, and `ref`, the version of the last e-mail about them | 12 months from the last refusal, or until moved, reset or removed |
-| ACCESS | `conflict_notified:<AccessID>` | when the last e-mail about a second installation went | 24 hours |
+| ACCESS | `seat:<AccessID>` | the installations the account has asked from, up to ten, oldest first: each its identifier, first and last check, product, version (a record from before 2026-10-11 holds one installation at its top level, rewritten at the next check) | until reset or removed; beyond ten, the one least recently seen is dropped |
+| ACCESS | `install:<identifier>` | the account an installation serves, and since when | as long as it is on that account's record |
+| ACCESS | `conflict:<AccessID>` | refusals: kind (`other_account`; `other_installation` only from before 2026-10-11), count, first and last, the fingerprint of the installation last refused | 12 months from the last refusal, or until reset or removed |
+| ACCESS | `notice:<AccessID>` | the last e-mail about a new installation: `ref` (its version, which its Withdraw link must match), when it went, the new installation's fingerprint, how many were on record | 12 months, or until reset or removed |
+| ACCESS | `install_notified:<AccessID>` | when the last e-mail about a new installation went (`conflict_notified:<AccessID>` until 2026-10-11) | 24 hours |
 | ACCESS | `confirm_mail:<AccessID>:<day>` | confirmation e-mails sent to the student that day (3 at most) | 2 days |
 | ACCESS | `revoked`, `revoked_signed` | the withdrawn key ids; the signed list | until replaced |
 | ACCESS | `grid-token` | the grid token's SHA-256 (never the token) and when it was made (`made_at`) | until replaced or withdrawn |
@@ -738,11 +743,12 @@ words of Beethoven for VS Code's own (`grid/license.js` there), in both spelling
 signer, a key past its grace and a changed list. The tests used to load that repository's verifier and
 test key; the check of the real verifier against what this Worker signs now belongs to that repository,
 through this one's published vectors. The installation rule, grants, the v2 request with and without a CV, the CV
-link, the three decision links, the second-installation e-mail and its two links, the mailbox proof
+link, the three decision links, the new-installation e-mail and its one link (until 2026-10-11 the
+second-installation refusal and its two links), the mailbox proof
 with `MAIL_STUDENTS` on and off, and the admin routes `seat`, `reset-seat`, `seat-rule`, `grant` and
 `cv` each have their tests. Since 2026-09-30 afternoon also: every link tied to its version (a changed
-form, a newer refusal e-mail, a decision, a link without `ref`), the Move refusal while the installation
-is another account's seat, the reviewers' exemption on a localhost portal only, removal deleting the
+form, a newer notice e-mail, a decision, a link without `ref`), the retired Move link answering out of
+date, the reviewers' exemption on a localhost portal only, removal deleting the
 access-check records, mailbox confirmation required (7 days, the refused confirmation e-mail, the
 confirmed form sent again), the lifecycle and the stages of `/admin/list` (its whole contract), the
 Approve page's invitation step (the copy box and the hash of its script, Done, invited once), `admin

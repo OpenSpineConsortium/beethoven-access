@@ -1,7 +1,7 @@
 {
- "vector": "access-check-other-installation",
+ "vector": "access-check-second-installation",
  "route": "/access_check",
- "summary": "An approved account from a second installation: no, reason other_installation",
+ "summary": "An approved account from a second installation of its own: yes, and that installation joins its record (until 2026-10-11 this was refused other_installation)",
  "request": {
   "method": "POST",
   "path": "/access_check",
@@ -26,10 +26,10 @@
    "content-type": "application/json"
   },
   "body": {
-   "approved": false,
+   "approved": true,
    "access_id": "ab1234",
-   "reason": "other_installation",
-   "requestPage": "https://openspineconsortium.com/beethoven/request.html"
+   "checked": "2026-10-07T12:00:00.000Z",
+   "until": null
   }
  }
 }

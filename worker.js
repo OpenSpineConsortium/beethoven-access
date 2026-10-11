@@ -20,11 +20,15 @@
 //                    MAIL_STUDENTS "1" the student is e-mailed first at <AccessID>@wayne.edu, the maintainer
 //                    only once they confirm (/confirm), and an unconfirmed request is dropped after 7 days;
 //                    otherwise the maintainer's e-mail says the mailbox is not verified.
-//   GET|POST /decide the page the decision links open, the Move and Withdraw links of the e-mail about a
-//                    second installation, and the Done, invited links (the Approve page and the daily
-//                    reminder). A link is a signed capability (DECIDE_KEY, HMAC-SHA256, 14 days, one use) tied
-//                    to the version of the request or refusal it was sent for; GET only asks the question, the
-//                    page's one button POSTs the decision, which goes through the same code as the admin routes.
+//   GET|POST /decide the page the decision links open, the one Withdraw link of the notice about a new
+//                    installation, and the Done, invited links (the Approve page and the daily reminder). A
+//                    link is a signed capability (DECIDE_KEY, HMAC-SHA256, 14 days, one use) whose ref ties it
+//                    to the version of what it was sent for: a request's links to that version of the request,
+//                    the Withdraw link to the notice on record (notice:<AccessID>, the last e-mail about the
+//                    account's installations, so an older notice's link answers "replaced"), the Done, invited
+//                    links to the approval. GET only asks the question, the page's one button POSTs the
+//                    decision, which goes through the same code as the admin routes. The Move link of the
+//                    e-mails sent until 2026-10-11 answers "out of date" and is never acted on.
 //   cron (scheduled) once a day: when an account approved for Beethoven has waited more than an hour without
 //                    being marked invited to the Google Group Beethoven-users, one e-mail to the maintainer lists
 //                    them with a Done, invited link each (one a day at most; only the name REMINDER_FROM sends).
@@ -50,10 +54,12 @@
 //   POST /access_check  Beethoven (the browser extension) asks whether one account is approved (ACCESS_CHECK.md
 //                    has the contract). No key is involved: the account name is the one the person's own
 //                    portal shows after their university sign-in. Beethoven 8.0.0 on also sends install_id,
-//                    the random identifier the extension makes when it is installed: one approved account
-//                    works on one installation (seat:<AccessID>), and one installation for one account; a
-//                    second installation is refused and e-mailed to the maintainer once a day with a Move
-//                    and a Withdraw link. A check without install_id is refused update_required unless
+//                    the random identifier the extension makes when it is installed: an approved account
+//                    works on any number of its own installations, the ten most recently seen kept on record
+//                    (seat:<AccessID>), and one installation serves one account; a new installation is
+//                    approved and e-mailed to the maintainer once a day with a Withdraw link (until
+//                    2026-10-11 a second installation was refused, with a Move link). A check without
+//                    install_id is refused update_required unless
 //                    REQUIRE_INSTALL_ID is "0". The store reviewers' mock account (any_installation) is
 //                    approved only when the portal is localhost or under .localhost, there from any
 //                    installation; from any other portal it is answered as an unknown account. The decision
@@ -220,7 +226,7 @@ const isReviewerMock = (rec) => !!rec && rec.any_installation === true;
 // (POST /access_check, GET /admin/allowlist, POST /trial, the daily reminder): the grant "extension", and, for
 // the reviewers' mock record, a local portal. portal is the hostname an access check names; the other
 // routes have none, and none is never local, so the mock record is approved only in an access check
-// from a local portal (there from any installation, binding none). Anywhere else it is no approval: a
+// from a local portal (there from any installation, recording none). Anywhere else it is no approval: a
 // check from a real portal gets the plain no an unknown account gets (no seat written, no conflict, no
 // e-mail), the approved list leaves it out and /trial issues it no key. The admin routes still list it, with
 // any_installation, so the maintainer sees what it is.
@@ -509,11 +515,14 @@ async function sendMail(env, { subject, text, html, to: toGiven }) {
   }
 }
 
-// The links in the e-mails. token = base64url(JSON {v, access_id, decision, nonce, exp} plus install_id for
-// a Move, and ref: the version of the request (a decision, the CV, a confirmation), of the refusal e-mail (Move,
-// Withdraw) or of the approval (Done, invited) it was sent for) + "." + base64url(HMAC-SHA256 of that first
-// part, key DECIDE_KEY). exp is in seconds. The links of one e-mail that decide share a nonce, so once one is
-// used all are spent; the CV link, the confirmation link and each Done, invited link have their own.
+// The links in the e-mails. token = base64url(JSON {v, access_id, decision, nonce, exp, ref}) + "." +
+// base64url(HMAC-SHA256 of that first part, key DECIDE_KEY). ref is the version of what the link was sent
+// for: the request (a decision, the CV, a confirmation), the notice about a new installation (Withdraw,
+// notice:<AccessID>) or the approval (Done, invited). exp is in seconds. install_id in a token is only the
+// retired Move path's (the e-mails sent until 2026-10-11): no link made now carries one, and RETIRED_DECISIONS
+// answers such a link as out of date. The three decision links of a request e-mail share a nonce, so once
+// one is used all are spent; the notice e-mail has one link; the CV link, the confirmation link and each
+// Done, invited link have their own.
 const decideKey = (env) => crypto.subtle.importKey('raw', ascii(env.DECIDE_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 
 async function decideToken(env, claim) {
@@ -523,12 +532,16 @@ async function decideToken(env, claim) {
 
 // what each route takes: /decide the decisions, /cv the CV link, /confirm the student's link. A link of
 // one kind opened at another route is "not valid".
-const DECIDE_DECISIONS = new Set(['approve', 'lab', 'deny', 'move', 'withdraw', 'invited']);
+const DECIDE_DECISIONS = new Set(['approve', 'lab', 'deny', 'withdraw', 'invited']);
 const CV_DECISIONS = new Set(['cv']);
 const CONFIRM_DECISIONS = new Set(['confirm']);
+// a decision the service no longer takes: the Move link of the e-mails sent until 2026-10-11, when a second
+// installation was refused. Its token still verifies, so that an old e-mail answers "out of date" rather
+// than "not valid", and it is never acted on.
+const RETIRED_DECISIONS = new Set(['move']);
 // the links that act only on the version they were sent for; one without a ref (an e-mail sent before
 // 2026-09-30 afternoon) is out of date
-const REF_BOUND = new Set(['approve', 'lab', 'deny', 'move', 'withdraw', 'cv']);
+const REF_BOUND = new Set(['approve', 'lab', 'deny', 'withdraw', 'cv']);
 
 // { ok: true, claim } for a good link; { ok: false, why: 'invalid' | 'expired' } otherwise. The signature
 // is checked before anything in the token is read.
@@ -549,7 +562,6 @@ async function readDecideToken(env, t, allowed) {
     return { ok: false, why: 'invalid' };
   }
   if (!c || c.v !== 1 || !ACCESS_ID.test(String(c.access_id)) || typeof c.decision !== 'string' || !allowed.has(c.decision) || !NONCE.test(String(c.nonce)) || !Number.isFinite(c.exp)) return { ok: false, why: 'invalid' };
-  if (c.decision === 'move' && !INSTALL_ID.test(String(c.install_id))) return { ok: false, why: 'invalid' };
   if (c.decision === 'confirm' && !NONCE.test(String(c.ref))) return { ok: false, why: 'invalid' };
   if (c.ref !== undefined && !NONCE.test(String(c.ref))) return { ok: false, why: 'invalid' };
   if (c.exp * 1000 <= Date.now()) return { ok: false, why: 'expired', claim: c };
@@ -695,13 +707,13 @@ function approvalMail(env, accessId, rec, { added = false } = {}) {
   // added: GROUP_MODE "workspace" put the account in the group itself, and Google sends no invitation then
   const steps = added ? [
     `1. Your Google account ${google} is now in the Google Group ${GROUP_NAME}: the lab added it, so there is no invitation to accept.`,
-    `2. Install Beethoven from the private Chrome listing (your lab lead sends you its link), in the Chrome you sign in to with ${google}, on your own computer. Beethoven works on one installation per person, so install it once; if you change computers, ask your lab lead to move it.`,
+    `2. Install Beethoven from the private Chrome listing (your lab lead sends you its link), in the Chrome you sign in to with ${google}, on your own computer. Beethoven works on any computer of yours; install it where you work.`,
     `3. How it works: ${how}`,
   ] : [
     google
       ? `1. Watch for the Google Groups invitation at ${google}, to the group ${GROUP_NAME}, and accept it.`
       : `1. Watch for the Google Groups invitation to the group ${GROUP_NAME} at the Google account you use in Chrome (your lab lead will ask which one, since the form you used did not).`,
-    `2. Then install Beethoven from the private Chrome listing (the invitation e-mail has the link), in the Chrome you sign in to with ${google || 'that account'}, on your own computer. Beethoven works on one installation per person, so install it once; if you change computers, ask your lab lead to move it.`,
+    `2. Then install Beethoven from the private Chrome listing (the invitation e-mail has the link), in the Chrome you sign in to with ${google || 'that account'}, on your own computer. Beethoven works on any computer of yours; install it where you work.`,
     `3. How it works: ${how}`,
   ];
   const footer = `Sent by the Beethoven access service because your request was approved. If the ${added ? 'link' : 'invitation'} has not come within two days, tell your lab lead.`;
@@ -961,49 +973,76 @@ async function accessRequest(request, env, ctx) {
   return answer('not_verified');
 }
 
-// A refusal on record: conflict:<AccessID> {kind, count, first_at, last_at, other_install_short, ref}, kept
-// a year from the last one. The installation that asked is kept only as its fingerprint. ref is the version
-// of the last e-mail about it (written once that e-mail went): its Move and Withdraw links act only while
-// it is the one on record.
+// A refusal on record: conflict:<AccessID> {kind, count, first_at, last_at, other_install_short}, kept a year
+// from the last one. Since 2026-10-11 the one kind written is other_account (the installation serves another
+// account); a record of kind other_installation, from the days when a second installation was refused, goes
+// the next time a new installation of the account is approved. The installation that asked is kept only
+// as its fingerprint.
 async function recordConflict(env, accessId, kind, installId, now) {
   const key = `conflict:${accessId}`;
   const prior = (await env.ACCESS.get(key, 'json')) || {};
-  const rec = { kind, count: (Number(prior.count) || 0) + 1, first_at: prior.first_at || now, last_at: now, other_install_short: await installShort(installId), ...(prior.ref ? { ref: prior.ref } : {}) };
+  const rec = { kind, count: (Number(prior.count) || 0) + 1, first_at: prior.first_at || now, last_at: now, other_install_short: await installShort(installId) };
   await env.ACCESS.put(key, JSON.stringify(rec), { expirationTtl: CONFLICT_KEEP_SECONDS });
   return rec;
 }
 
-// the maintainer's e-mail about a second installation, with a Move and a Withdraw link for this e-mail's ref
-async function conflictMail(env, base, accessId, rec, seat, refused, ref) {
+// The installations an approved account has asked from: seat:<AccessID> {installs: [{install_id, first_seen,
+// last_seen, product, version}, ...]}, oldest first, the MAX_INSTALLS most recently seen kept. A record
+// written before 2026-10-11 names its one installation at the top level ({install_id, first_seen, last_seen,
+// product, version}, plus moved_at and by after a Move): it is read as a list of one, and the next check
+// writes it back in the new shape.
+const MAX_INSTALLS = 10;
+function installsOf(seat) {
+  if (!seat) return [];
+  if (Array.isArray(seat.installs)) return seat.installs.filter((i) => i && typeof i.install_id === 'string');
+  if (typeof seat.install_id === 'string') return [{ install_id: seat.install_id, first_seen: seat.first_seen, last_seen: seat.last_seen, product: seat.product, version: seat.version }];
+  return [];
+}
+
+// the installations as the admin list shows them: how many, the oldest's first check, the newest's last
+// check and what it runs, and no identifier; null when there is none
+function seatSummary(seat) {
+  const installs = installsOf(seat);
+  if (!installs.length) return null;
+  const sorted = (k) => [...installs].sort((a, b) => String(a[k]).localeCompare(String(b[k])));
+  const oldest = sorted('first_seen')[0];
+  const newest = sorted('last_seen')[installs.length - 1];
+  return { installations: installs.length, first_seen: oldest.first_seen, last_seen: newest.last_seen, product: newest.product, version: newest.version };
+}
+
+// the maintainer's e-mail when an approved account asks from an installation not on its record: a notice,
+// nothing refused, with one link, Withdraw approval, for this e-mail's ref. installs is the record as it
+// stands, the new installation among them.
+async function newInstallMail(env, base, accessId, rec, installs, added, portal, ref) {
   const name = oneLine(rec.name);
   const label = name ? `${name} (${accessId})` : accessId;
+  const others = installs.filter((i) => i.install_id !== added.install_id);
   const facts = [
     ['Account', label],
-    ['Installation in use', `${await installShort(seat.install_id)}, set up ${readableTime(seat.first_seen)}, last check ${readableTime(seat.last_seen)}, version ${oneLine(seat.version) || 'unknown'}`],
-    ['Refused installation', `${await installShort(refused.installId)}, ${readableTime(refused.at)}, version ${refused.version}, portal ${refused.portal}`],
-    ['Refusals', String(refused.count)],
+    ['Installations on record', `${installs.length}, the new one included`],
+    ...(await Promise.all(others.map(async (i) => ['Installation', `${await installShort(i.install_id)}, set up ${readableTime(i.first_seen)}, last check ${readableTime(i.last_seen)}, version ${oneLine(i.version) || 'unknown'}`]))),
+    ['New installation', `${await installShort(added.install_id)}, ${readableTime(added.first_seen)}, version ${added.version}, portal ${portal}`],
   ];
-  let links = null;
+  let link = null;
   if (env.DECIDE_KEY) {
     const exp = Math.floor(Date.now() / 1000) + DECIDE_DAYS * 86400;
-    const nonce = newNonce();
-    links = {
-      move: `${base}/decide?t=${await decideToken(env, { access_id: accessId, decision: 'move', nonce, exp, install_id: refused.installId, ref })}`,
-      withdraw: `${base}/decide?t=${await decideToken(env, { access_id: accessId, decision: 'withdraw', nonce, exp, ref })}`,
+    link = {
+      withdraw: `${base}/decide?t=${await decideToken(env, { access_id: accessId, decision: 'withdraw', nonce: newNonce(), exp, ref })}`,
       until: new Date(exp * 1000).toISOString().slice(0, 10),
     };
   }
-  const advice = 'If they reinstalled Beethoven or changed computers, move the approval: the new installation works from its next check and the old one is refused. If the account is being shared, withdraw the approval. The account name in a check is not proved, so anyone who knows the AccessID can cause this e-mail: ask the person before you withdraw. Doing nothing keeps Beethoven working on the first installation only.';
-  const how = links
-    ? `Each link opens a page with one button; nothing changes until you press it. Use one of the two, once. They work until ${links.until}, until a newer e-mail about this account replaces them, or until the refusal is settled another way.`
-    : `The links are off because the service has no DECIDE_KEY; use node admin.mjs reset-seat ${accessId} (the next installation to check then gets it) or remove ${accessId}.`;
-  const footer = `Sent by the Beethoven access service when an approved account is checked from a second installation; one e-mail per account a day at most. An installation is shown by its fingerprint (the first 8 characters of a SHA-256 of its random identifier); node admin.mjs seat ${accessId} shows the same.`;
+  const advice = 'A new installation is a new computer, a new browser profile, Chrome Sync putting Beethoven on another computer, or a reinstall. Nothing was refused: the approval works there from its first check. If the account is being shared, withdraw the approval. The account name in a check is not proved, so anyone who knows the AccessID can cause this e-mail: ask the person before you withdraw. Doing nothing keeps Beethoven working on every installation that asks.';
+  const how = link
+    ? `The link opens a page with one button; nothing changes until you press it. It works until ${link.until}, until a newer e-mail about this account replaces it, or until the approval is withdrawn or the account's installations reset another way.`
+    : `The link is off because the service has no DECIDE_KEY; use node admin.mjs remove ${accessId} to withdraw the approval, or reset-seat ${accessId} to clear the installations on record (each is recorded again at its next check).`;
+  const footer = `Sent by the Beethoven access service when an approved account is checked from an installation not on its record; one e-mail per account a day at most. An installation is shown by its fingerprint (the first 8 characters of a SHA-256 of its random identifier); node admin.mjs seat ${accessId} shows the same.`;
+  const lead = `${label} is using Beethoven on a new installation; nothing was refused.`;
   const text = [
-    `${label} asked from a second installation; it was refused.`,
+    lead,
     '',
     ...facts.map(([k, v]) => `${k}: ${v}`),
     '',
-    ...(links ? [`Move the approval to the new installation: ${links.move}`, '', `Withdraw approval: ${links.withdraw}`, ''] : []),
+    ...(link ? [`Withdraw approval: ${link.withdraw}`, ''] : []),
     advice,
     '',
     how,
@@ -1015,71 +1054,79 @@ async function conflictMail(env, base, accessId, rec, seat, refused, ref) {
   const a = (href, label2) => `<a href="${esc(href)}">${esc(label2)}</a>`;
   const html = [
     '<div style="font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5">',
-    `<p>${esc(label)} asked from a second installation; it was refused.</p>`,
+    `<p>${esc(lead)}</p>`,
     `<table style="border-collapse:collapse">${facts.map(([k, v]) => `<tr><td style="padding:2px 12px 2px 0;color:#555">${esc(k)}</td><td style="padding:2px 0">${esc(v)}</td></tr>`).join('')}</table>`,
-    ...(links ? [`<p><strong>${a(links.move, 'Move the approval to the new installation')}</strong> &nbsp; &middot; &nbsp; ${a(links.withdraw, 'Withdraw approval')}</p>`] : []),
+    ...(link ? [`<p>${a(link.withdraw, 'Withdraw approval')}</p>`] : []),
     `<p>${esc(advice)}</p>`,
     `<p>${esc(how)}</p>`,
     `<p>The admin page lists every approval: ${a(adminPage(env), adminPage(env))}</p>`,
     `<p style="color:#555">${esc(footer)}</p>`,
     '</div>',
   ].join('\n');
-  return { subject: `Beethoven: ${accessId} asked from a second installation`, text, html };
+  return { subject: `Beethoven: ${label} is using a new installation`, text, html };
 }
 
-async function notifyConflict(env, base, accessId, rec, seat, refused, conflict) {
+// The e-mail about a new installation, on record: notice:<AccessID> {ref, sent_at, install_short,
+// installations}, kept a year like a refusal. ref is the version of the last e-mail: its Withdraw link acts
+// only while it is the one on record, and reset-seat and remove delete the record. One e-mail per account
+// a day (install_notified:<AccessID>); a day with no e-mail sent starts no day.
+async function notifyNewInstall(env, base, accessId, rec, installs, added, portal) {
   if (!env.RESEND_API_KEY) {
     console.log('mail: no provider configured');
     return;
   }
-  const flag = `conflict_notified:${accessId}`;
+  const flag = `install_notified:${accessId}`;
   if (await env.ACCESS.get(flag)) return;
-  // a new version for this e-mail: once it has gone, the conflict record names it, and the links of any
-  // earlier e-mail about this account answer "replaced"
   const ref = newNonce();
-  const r = await sendMail(env, await conflictMail(env, base, accessId, rec, seat, refused, ref));
+  const r = await sendMail(env, await newInstallMail(env, base, accessId, rec, installs, added, portal, ref));
   if (!r.sent) return;
   await env.ACCESS.put(flag, new Date().toISOString(), { expirationTtl: NOTIFY_EVERY_SECONDS });
-  await env.ACCESS.put(`conflict:${accessId}`, JSON.stringify({ ...conflict, ref }), { expirationTtl: CONFLICT_KEEP_SECONDS });
+  await env.ACCESS.put(`notice:${accessId}`, JSON.stringify({ ref, sent_at: new Date().toISOString(), install_short: await installShort(added.install_id), installations: installs.length }), { expirationTtl: CONFLICT_KEEP_SECONDS });
 }
 
-// One approved account, one installation; one installation, one account. null lets the check through;
-// otherwise the reason it is refused: update_required (no install_id, while REQUIRE_INSTALL_ID is not
-// "0"), other_installation (the account is bound to another installation) or other_account (this
-// installation is bound to another account). The first check from an installation binds it:
-// seat:<AccessID> {install_id, first_seen, last_seen, product, version} and install:<install_id>
-// {access_id, bound_at}. KV is eventually consistent, so two installations checking within the same minute
-// can both bind; the one written last holds the seat and the other is refused at its next check.
+// An approved account works on any of its own installations; one installation serves one account (the
+// owner's decision of 2026-10-11; until then one account worked on one installation and a second was refused
+// other_installation). null lets the check through; otherwise the reason it is refused: update_required (no
+// install_id, while REQUIRE_INSTALL_ID is not "0") or other_account (this installation is on another account's
+// record). An installation on the account's record has its last check, product and version brought up to
+// date; one not yet on it is added (seat:<AccessID>, installsOf) and indexed (install:<install_id>
+// {access_id, bound_at}), the oldest by last check dropped and unbound beyond MAX_INSTALLS, and when the
+// record already held another the maintainer is told once a day (notifyNewInstall). KV is eventually
+// consistent, so two accounts checking from one installation within the same minute can both record it;
+// the index written last names the account the other is refused for at its next check.
 async function installationRule(env, ctx, base, { accessId, installId, product, version, portal, now, rec }) {
   if (!installId) return installIdRequired(env) ? 'update_required' : null;
   const seatKey = `seat:${accessId}`;
-  const seat = await env.ACCESS.get(seatKey, 'json');
-  if (seat && seat.install_id === installId) {
-    await env.ACCESS.put(seatKey, JSON.stringify({ ...seat, last_seen: now, product, version }));
+  const installs = installsOf(await env.ACCESS.get(seatKey, 'json'));
+  const known = installs.find((i) => i.install_id === installId);
+  if (known) {
+    Object.assign(known, { last_seen: now, product, version });
+    await env.ACCESS.put(seatKey, JSON.stringify({ installs }));
     return null;
   }
-  if (seat) {
-    const conflict = await recordConflict(env, accessId, 'other_installation', installId, now);
-    const mail = notifyConflict(env, base, accessId, rec, seat, { installId, product, version, portal, at: now, count: conflict.count }, conflict).catch((e) => console.error(`mail: not sent (${(e && e.name) || 'error'})`));
-    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(mail);
-    else await mail;
-    return 'other_installation';
+  if (await seatHolder(env, accessId, installId)) {
+    await recordConflict(env, accessId, 'other_account', installId, now);
+    return 'other_account';
   }
-  const indexKey = `install:${installId}`;
-  const index = await env.ACCESS.get(indexKey, 'json');
-  if (index && index.access_id !== accessId) {
-    // bound to another account, as long as that account's seat still names this installation
-    const other = await env.ACCESS.get(`seat:${index.access_id}`, 'json');
-    if (other && other.install_id === installId) {
-      await recordConflict(env, accessId, 'other_account', installId, now);
-      return 'other_account';
-    }
+  const added = { install_id: installId, first_seen: now, last_seen: now, product, version };
+  const kept = [...installs, added];
+  while (kept.length > MAX_INSTALLS) {
+    const oldest = kept.reduce((a, b) => (String(b.last_seen) < String(a.last_seen) ? b : a));
+    kept.splice(kept.indexOf(oldest), 1);
+    await dropIndex(env, accessId, oldest.install_id);
   }
-  await env.ACCESS.put(seatKey, JSON.stringify({ install_id: installId, first_seen: now, last_seen: now, product, version }));
-  await env.ACCESS.put(indexKey, JSON.stringify({ access_id: accessId, bound_at: now }));
+  await env.ACCESS.put(seatKey, JSON.stringify({ installs: kept }));
+  await env.ACCESS.put(`install:${installId}`, JSON.stringify({ access_id: accessId, bound_at: now }));
   // the lifecycle's "installed", once: in its own record, because a check never writes the approval itself
   // (a check that raced a removal could otherwise bring the approval back)
   if (!(await env.ACCESS.get(`installed:${accessId}`))) await env.ACCESS.put(`installed:${accessId}`, JSON.stringify({ at: now, product, version }));
+  if (!installs.length) return null;
+  // a refusal recorded while a second installation was refused (before 2026-10-11) is settled by this check
+  const conflict = await env.ACCESS.get(`conflict:${accessId}`, 'json');
+  if (conflict && conflict.kind === 'other_installation') await env.ACCESS.delete(`conflict:${accessId}`);
+  const mail = notifyNewInstall(env, base, accessId, rec, kept, added, portal).catch((e) => console.error(`mail: not sent (${(e && e.name) || 'error'})`));
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(mail);
+  else await mail;
   return null;
 }
 
@@ -1093,7 +1140,8 @@ async function installationRule(env, ctx, base, { accessId, installId, product, 
 // other portal it is answered as an unknown account is, and nothing is bound or e-mailed. What is kept:
 // seen:<product>:<access_id>, one record per product and account with the last check (portal, version,
 // time, the salted hash of the address, the decision and its reason, when the decision last changed), the
-// seat and the installation index, a conflict record for a refusal, and the day's counters per account and
+// account's installations and the installation index, a conflict record for a refusal, a notice record for
+// the e-mail about a new installation, and the day's counters per account and
 // per hashed address. The address itself is never stored. A no carries the request page for the product
 // that asked: BEETHOVEN_REQUEST_PAGE for "bridge" and "beethoven", REQUEST_PAGE otherwise.
 async function accessCheck(request, env, ctx) {
@@ -1270,29 +1318,30 @@ async function seenKeysOf(env, accessId) {
 }
 
 // Remove (admin) and Withdraw approval (the e-mail link): the person leaves every list, every key issued
-// to them goes on the revocation list, and their seat, installation record, conflicts, CV and access-check
-// records are deleted. requireApproved: the e-mail link changes nothing for someone who is not approved
-// any more (404).
+// to them goes on the revocation list, and their installations (the record and every index entry), the
+// installed mark, conflicts, the notice, CV and access-check records are deleted. requireApproved: the
+// e-mail link changes nothing for someone who is not approved any more (404).
 async function applyRemove(env, accessId, by, { requireApproved = false } = {}) {
   const [approved, seat] = await Promise.all([env.ACCESS.get(`approved:${accessId}`, 'json'), env.ACCESS.get(`seat:${accessId}`, 'json')]);
   if (requireApproved && !approved) return { status: 404, body: { error: `${accessId} is not approved` } };
   const lids = approved && Array.isArray(approved.lids) ? approved.lids : [];
   const seen = await seenKeysOf(env, accessId);
-  await Promise.all([...['approved', 'pending', 'denied', 'seat', 'conflict', 'cv', 'installed'].map((k) => `${k}:${accessId}`), ...seen].map((k) => env.ACCESS.delete(k)));
-  await dropIndex(env, accessId, seat && seat.install_id);
+  await Promise.all([...['approved', 'pending', 'denied', 'seat', 'conflict', 'notice', 'cv', 'installed'].map((k) => `${k}:${accessId}`), ...seen].map((k) => env.ACCESS.delete(k)));
+  for (const i of installsOf(seat)) await dropIndex(env, accessId, i.install_id);
   if (lids.length) await revoke(env, lids);
   await audit(env, 'remove', accessId, { lids, by });
   return { status: 200, body: { status: 'removed', accessId, revoked: lids } };
 }
 
-// the account another installation is bound to, when that installation is the seat of an account other
-// than this one (its seat still names it); null otherwise. One installation serves one account, so a Move
-// there is refused until that other approval is withdrawn or its seat reset.
+// the account an installation serves, when that is an account other than this one and the installation is
+// still on its record (its index names the account and the account's record lists it); null otherwise. One
+// installation serves one account, so another account asking from it is refused other_account until that
+// approval is withdrawn or its installations reset.
 async function seatHolder(env, accessId, installId) {
   const index = await env.ACCESS.get(`install:${installId}`, 'json');
   if (!index || !index.access_id || index.access_id === accessId) return null;
   const other = await env.ACCESS.get(`seat:${index.access_id}`, 'json');
-  return other && other.install_id === installId ? index.access_id : null;
+  return installsOf(other).some((i) => i.install_id === installId) ? index.access_id : null;
 }
 
 // Mark invited to the Google Group (the Done, invited links, admin invited, the workspace adapter): once;
@@ -1346,34 +1395,17 @@ async function afterApprove(env, ctx, accessId, result) {
   return invite;
 }
 
-// Move the approval to another installation (the Move link): the seat names it from now on, the old
-// installation's index entry goes, and the conflict record is cleared. Refused (409) while that
-// installation is the seat of another account.
-async function applyMoveSeat(env, accessId, installId, by) {
-  const [approved, prior] = await Promise.all([env.ACCESS.get(`approved:${accessId}`, 'json'), env.ACCESS.get(`seat:${accessId}`, 'json')]);
-  if (!approved) return { status: 404, body: { error: `${accessId} is not approved` } };
-  const holder = await seatHolder(env, accessId, installId);
-  if (holder) return { status: 409, body: { error: 'other_account', holder } };
-  const now = new Date().toISOString();
-  if (!prior || prior.install_id !== installId) {
-    await env.ACCESS.put(`seat:${accessId}`, JSON.stringify({ install_id: installId, first_seen: now, last_seen: now, product: (prior && prior.product) || '', version: (prior && prior.version) || '', moved_at: now, by }));
-    await dropIndex(env, accessId, prior && prior.install_id);
-    await env.ACCESS.put(`install:${installId}`, JSON.stringify({ access_id: accessId, bound_at: now }));
-  }
-  await env.ACCESS.delete(`conflict:${accessId}`);
-  await audit(env, 'move-seat', accessId, { by });
-  return { status: 200, body: { status: 'moved', accessId } };
-}
-
-// Reset the seat (admin): the next installation to check binds the account. "installed" stays: a seat bound
-// before it was recorded leaves its first check as the date.
+// Reset the installations (admin reset-seat): the whole record, every index entry, the refusal and the notice
+// go, and each installation is recorded again at its next check. "installed" stays: a record from before it
+// was kept leaves the oldest installation's first check as the date.
 async function applyResetSeat(env, accessId) {
   const seat = await env.ACCESS.get(`seat:${accessId}`, 'json');
-  if (seat && seat.first_seen && !(await env.ACCESS.get(`installed:${accessId}`))) await env.ACCESS.put(`installed:${accessId}`, JSON.stringify({ at: seat.first_seen, product: seat.product || '', version: seat.version || '' }));
-  await Promise.all([env.ACCESS.delete(`seat:${accessId}`), env.ACCESS.delete(`conflict:${accessId}`)]);
-  await dropIndex(env, accessId, seat && seat.install_id);
+  const summary = seatSummary(seat);
+  if (summary && summary.first_seen && !(await env.ACCESS.get(`installed:${accessId}`))) await env.ACCESS.put(`installed:${accessId}`, JSON.stringify({ at: summary.first_seen, product: summary.product || '', version: summary.version || '' }));
+  await Promise.all(['seat', 'conflict', 'notice'].map((k) => env.ACCESS.delete(`${k}:${accessId}`)));
+  for (const i of installsOf(seat)) await dropIndex(env, accessId, i.install_id);
   await audit(env, 'reset-seat', accessId);
-  return { status: 'reset', accessId, had_seat: !!seat };
+  return { status: 'reset', accessId, had_seat: !!summary };
 }
 
 // the small pages /decide, /confirm and /cv answer with: no scripts (the CSP forbids them), not cached, not
@@ -1468,7 +1500,6 @@ const DECISIONS = {
   approve: { ask: (l) => `Approve ${l} for Beethoven?`, button: 'Approve for Beethoven', done: (id) => `${id} was approved for Beethoven` },
   lab: { ask: (l) => `Approve ${l} for lab membership only?`, button: 'Lab membership only', done: (id) => `${id} was approved for lab membership only` },
   deny: { ask: (l) => `Deny access for ${l}?`, button: 'Deny', done: (id) => `${id} was denied` },
-  move: { ask: (l) => `Move the approval of ${l} to the new installation?`, button: 'Move the approval', done: (id) => `the approval of ${id} was moved to the new installation` },
   withdraw: { ask: (l) => `Withdraw the approval of ${l}?`, button: 'Withdraw approval', done: (id) => `the approval of ${id} was withdrawn` },
   invited: { ask: (l) => `Mark ${l} as invited to ${GROUP_NAME}?`, button: 'Done, invited', done: (id) => `${id} was marked invited` },
 };
@@ -1498,14 +1529,10 @@ async function decideQuestion(env, c, recs) {
       'It records the date on their approval, and the daily reminder stops listing them.',
     ];
   }
-  if (c.decision === 'move') {
-    const seat = await env.ACCESS.get(`seat:${id}`, 'json');
-    const now = seat ? `Beethoven works for ${id} on one installation, ${await installShort(seat.install_id)}, set up ${readableTime(seat.first_seen)}, last check ${readableTime(seat.last_seen)}.` : `${id} has no installation on record now.`;
-    return [now, `Pressing the button makes the refused installation, ${await installShort(c.install_id)}, the one: it works from its next check, and the one in use now is refused from its next check (it may keep working up to a day on the answer it holds).`];
-  }
+  const installs = installsOf(await env.ACCESS.get(`seat:${id}`, 'json'));
   return [
-    `${id} is approved (${grantsOf(approved).join(' and ')}) since ${readableTime(approved.approved_at)}.`,
-    'Pressing the button takes them off the approved list: Beethoven stops at its next check (it may keep working up to a day on the answer it holds, a week if it cannot reach the service), Beethoven for VS Code refuses new keys, and every key issued to them is withdrawn. Their installation record and CV are deleted.',
+    `${id} is approved (${grantsOf(approved).join(' and ')}) since ${readableTime(approved.approved_at)}, with ${installs.length === 1 ? 'one installation' : `${installs.length} installations`} on record.`,
+    'Pressing the button takes them off the approved list: Beethoven stops on every installation at its next check (each may keep working up to a day on the answer it holds, a week if it cannot reach the service), Beethoven for VS Code refuses new keys, and every key issued to them is withdrawn. Their installation records and CV are deleted.',
   ];
 }
 
@@ -1536,8 +1563,8 @@ async function invitationStep(env, accessId, rec, invite, who) {
 }
 
 // A link that no longer matches what is on record answers with a page here, before anything else: out of
-// date (no ref), replaced (a newer version of the request or of the refusal e-mail), decided already, or
-// settled another way. null when the link is current. Nothing is written and no link is spent.
+// date (no ref), replaced (a newer version of the request or of the e-mail about a new installation), decided
+// already, or settled another way. null when the link is current. Nothing is written and no link is spent.
 async function stalePage(env, c, recs, label, toAdmin) {
   const { pending, approved, denied } = recs;
   const id = c.access_id;
@@ -1553,15 +1580,11 @@ async function stalePage(env, c, recs, label, toAdmin) {
     if ([approved, denied].some((r) => r && r.ref)) return replaced();
     return decidePage(409, 'Nothing changed', [`There is no request from ${id} on record any more; it may have been cleared on the admin page.`, toAdmin('To approve them anyway, use Add on')]);
   }
-  if (c.decision === 'move' || c.decision === 'withdraw') {
-    if (!approved) return decidePage(409, 'Nothing changed', [`${label} is not on the approved list any more, so there is no approval to ${c.decision === 'move' ? 'move' : 'withdraw'}.`, toAdmin('Every approval is on')]);
-    const conflict = await env.ACCESS.get(`conflict:${id}`, 'json');
-    if (!conflict || !conflict.ref) return decidePage(409, 'Nothing changed', ['The refusal this e-mail is about is no longer on record: since it was sent, the approval was moved, the seat reset, or the approval removed. Nothing was changed.', toAdmin('Every approval is on')]);
-    if (conflict.ref !== c.ref) return decidePage(409, 'This e-mail was replaced', [`Beethoven was refused for ${label} again after this e-mail, and a newer e-mail about it went out: see the newer e-mail and use its links. Nothing was changed.`, toAdmin('Every approval is on')]);
-    if (c.decision === 'move') {
-      const holder = await seatHolder(env, id, c.install_id);
-      if (holder) return holderPage(label, holder, c.install_id, toAdmin);
-    }
+  if (c.decision === 'withdraw') {
+    if (!approved) return decidePage(409, 'Nothing changed', [`${label} is not on the approved list any more, so there is no approval to withdraw.`, toAdmin('Every approval is on')]);
+    const notice = await env.ACCESS.get(`notice:${id}`, 'json');
+    if (!notice || !notice.ref) return decidePage(409, 'Nothing changed', ['The e-mail this link came in is no longer on record: since it was sent, the account\'s installations were reset or the approval removed and made again. Nothing was changed.', toAdmin('Every approval is on')]);
+    if (notice.ref !== c.ref) return decidePage(409, 'This e-mail was replaced', [`${label} was seen on another new installation after this e-mail, and a newer e-mail about it went out: see the newer e-mail and use its link. Nothing was changed.`, toAdmin('Every approval is on')]);
     return null;
   }
   // invited
@@ -1572,16 +1595,6 @@ async function stalePage(env, c, recs, label, toAdmin) {
   return null;
 }
 
-// the Move link's refusal while the installation is another account's seat (F1 a)
-async function holderPage(label, holder, installId, toAdmin) {
-  return decidePage(409, 'This installation is in use by another account', [
-    `The installation ${await installShort(installId)}, which ${label} asked from, is the one ${holder} uses: one installation serves one account, so the approval cannot move there while ${holder} holds it.`,
-    `To go on, withdraw the approval of ${holder} first (Remove on the admin page, or node admin.mjs remove ${holder}); or, if ${holder} no longer uses that installation, reset its seat (node admin.mjs reset-seat ${holder}). Then open this link again: it was not used up.`,
-    'Nothing was changed.',
-    toAdmin('Every approval is on'),
-  ]);
-}
-
 // GET /decide?t=<token> asks; POST /decide?t=<token> with confirm=1 decides. A GET never writes
 // anything, so a mail client or a link scanner that fetches the link decides nothing.
 async function decide(request, env, url, ctx) {
@@ -1589,10 +1602,13 @@ async function decide(request, env, url, ctx) {
   if (request.method !== 'GET' && request.method !== 'POST') return decidePage(405, 'Open the link from the e-mail', [toAdmin('This address answers the links in the access e-mails. Decide on')]);
   if (!env.DECIDE_KEY) return decidePage(503, 'E-mail links are off', ['The access service has no DECIDE_KEY, so it cannot check this link.', toAdmin('Decide on')]);
   const { t, confirmed } = await linkForm(request, url);
-  const tok = await readDecideToken(env, t, DECIDE_DECISIONS);
+  const tok = await readDecideToken(env, t, new Set([...DECIDE_DECISIONS, ...RETIRED_DECISIONS]));
   if (!tok.ok && tok.why === 'expired') return decidePage(410, 'This link has expired', [`The links in an access e-mail work for ${DECIDE_DAYS} days. Nothing was changed.`, toAdmin('Decide on')]);
   if (!tok.ok) return decidePage(400, 'This link is not valid', ['It may have been cut short or changed on the way. Nothing was changed.', toAdmin('Decide on')]);
   const c = tok.claim;
+  // the Move link of an e-mail sent while a second installation was refused: since 2026-10-11 an approved
+  // account works on every installation of its own, so there is nothing to move, on GET and POST alike
+  if (RETIRED_DECISIONS.has(c.decision)) return decidePage(410, 'This link is out of date', [`Since 2026-10-11 an approved account works on every installation of its own, so there is no approval to move: Beethoven works for ${c.access_id} on the installation this e-mail was about from its first check after that day. Nothing was changed.`, toAdmin('Every approval is on')]);
   const kind = DECISIONS[c.decision];
   const usedKey = `decide:${c.nonce}`;
   const used = await env.ACCESS.get(usedKey, 'json');
@@ -1609,15 +1625,9 @@ async function decide(request, env, url, ctx) {
   let r;
   if (c.decision === 'approve' || c.decision === 'lab') r = await applyApprove(env, c.access_id, { by: 'e-mail link', grants: c.decision === 'lab' ? ['lab'] : GRANTS });
   else if (c.decision === 'deny') r = await applyDeny(env, c.access_id, { reason: '', by: 'e-mail link' });
-  else if (c.decision === 'move') r = await applyMoveSeat(env, c.access_id, c.install_id, 'e-mail link');
   else if (c.decision === 'invited') r = await applyInvited(env, c.access_id, 'e-mail link');
   else r = await applyRemove(env, c.access_id, 'e-mail link', { requireApproved: true });
-  if (c.decision === 'move' && r.status === 409 && r.body.holder) {
-    // bound elsewhere between the question and the press: the link is given back, unspent
-    await env.ACCESS.delete(usedKey);
-    return holderPage(label, r.body.holder, c.install_id, toAdmin);
-  }
-  if (r.status === 404 && (c.decision === 'move' || c.decision === 'withdraw' || c.decision === 'invited')) return decidePage(409, 'Nothing changed', [`${label} is not on the approved list any more, so there is nothing to ${c.decision === 'move' ? 'move' : c.decision === 'withdraw' ? 'withdraw' : 'mark'}.`, toAdmin('Every approval is on')]);
+  if (r.status === 404 && (c.decision === 'withdraw' || c.decision === 'invited')) return decidePage(409, 'Nothing changed', [`${label} is not on the approved list any more, so there is nothing to ${c.decision === 'withdraw' ? 'withdraw' : 'mark'}.`, toAdmin('Every approval is on')]);
   if (r.status === 404) return decidePage(409, 'Nothing changed', [`There is no request from ${c.access_id} on record any more; it may have been cleared on the admin page.`, toAdmin('To approve them anyway, use Add on')]);
   if (r.status === 409 && c.decision === 'invited') return decidePage(409, 'Nothing changed', [`${label} is a lab member only now; there is nothing for them to install.`, toAdmin('Every approval is on')]);
   if (r.status === 409) return decidePage(409, 'Nothing changed', [`${label} is approved already, so the request cannot be denied.`, toAdmin('To take the approval away, use Remove on')]);
@@ -1635,7 +1645,6 @@ async function decide(request, env, url, ctx) {
   if (c.decision === 'invited') return decidePage(200, 'Marked invited.', [`${label} is recorded as invited to the Google Group ${GROUP_NAME} (${readableTime(r.body.invited_at)}). The daily reminder no longer lists them.`, toAdmin('Every approval is on')]);
   if (c.decision === 'lab') return decidePage(200, 'Approved for lab membership.', [`${label} is recorded as a lab member. Beethoven stays closed to them until you approve them for it: with the Approve for Beethoven link of a later request, or node admin.mjs grant ${c.access_id} extension,lab.`, 'They are not told automatically; let them know.', toAdmin('Every request and approval is on')]);
   if (c.decision === 'deny') return decidePage(200, 'Denied.', [r.body.lab_member ? `${label} is not approved for Beethoven and stays a lab member. They are not told automatically.` : `${label} is not approved. They are not told automatically, and the request page will say not approved if they ask again.`, toAdmin('To change this, use')]);
-  if (c.decision === 'move') return decidePage(200, 'Moved.', [`Beethoven works for ${label} on the installation ${await installShort(c.install_id)} from its next check; the one used before is refused from its next check.`, toAdmin('Every approval is on')]);
   const n = r.body.revoked.length;
   return decidePage(200, 'Withdrawn.', [`${label} is off the approved list. Beethoven stops at its next check${n ? `, and ${n} key${n === 1 ? '' : 's'} issued to them for Beethoven for VS Code went on the revocation list` : ''}. They are not told automatically.`, toAdmin('To approve them again, use Add on')]);
 }
@@ -1751,8 +1760,8 @@ async function admin(request, env, url, ctx) {
     const seatOf = new Map(seats.map((s) => [s.accessId, s]));
     const conflictOf = new Map(conflicts.map((x) => [x.accessId, x]));
     const installedOf = new Map(installed.map((x) => [x.accessId, x]));
-    // The admin page's contract (ACCESS_CHECK.md, "The admin routes"). Seats and conflicts as counts and
-    // dates: no installation identifier, not even a fingerprint (admin seat shows that), and no link.
+    // The admin page's contract (ACCESS_CHECK.md, "The admin routes"). Installations and refusals as counts
+    // and dates: no installation identifier, not even a fingerprint (admin seat shows that), and no link.
     return reply(200, {
       now: new Date(nowMs).toISOString(),
       group: { name: GROUP_NAME, members_url: GROUP_MEMBERS_URL, mode: groupMode(env), ...(groupMode(env) === 'workspace' ? { address: groupAddress(env) } : {}) },
@@ -1761,7 +1770,7 @@ async function admin(request, env, url, ctx) {
         return { ...p, stage: p.mailbox === 'waiting' ? 'unconfirmed' : 'submitted', age_hours: Number.isNaN(since) ? null : Math.max(0, Math.floor((nowMs - since) / 3600000)) };
       }),
       approved: approved.map((a) => {
-        const s = seatOf.get(a.accessId);
+        const s = seatSummary(seatOf.get(a.accessId));
         const x = conflictOf.get(a.accessId);
         const i = installedOf.get(a.accessId);
         const installedAt = (i && i.at) || (s && s.first_seen) || null;
@@ -1770,7 +1779,7 @@ async function admin(request, env, url, ctx) {
           grants: grantsOf(a),
           stage: approvalStage(a, installedAt),
           ...(installedAt ? { installed_at: installedAt } : {}),
-          seat: s ? { bound: true, first_seen: s.first_seen, last_seen: s.last_seen, product: s.product, version: s.version, ...(s.moved_at ? { moved_at: s.moved_at } : {}) } : { bound: false },
+          seat: s ? { bound: true, ...s } : { bound: false },
           conflicts: x ? Number(x.count) || 0 : 0,
           ...(x ? { conflict_last_at: x.last_at } : {}),
         };
@@ -1778,7 +1787,7 @@ async function admin(request, env, url, ctx) {
       denied,
       revoked: revoked || [],
       checks,
-      seats: seats.map((s) => ({ accessId: s.accessId, first_seen: s.first_seen, last_seen: s.last_seen, product: s.product, version: s.version, ...(s.moved_at ? { moved_at: s.moved_at } : {}) })),
+      seats: seats.map((s) => ({ accessId: s.accessId, ...seatSummary(s) })).filter((s) => s.installations),
       conflicts: conflicts.map((x) => ({ accessId: x.accessId, kind: x.kind, count: x.count, first_at: x.first_at, last_at: x.last_at })),
     });
   }
@@ -1869,11 +1878,12 @@ async function admin(request, env, url, ctx) {
   }
   if (route === 'reset-seat') return reply(200, await applyResetSeat(env, accessId));
   if (route === 'seat') {
+    // the installations by fingerprint, oldest first, as the record holds them; the one route that shows one
     const [seat, conflict, rec] = await Promise.all([env.ACCESS.get(`seat:${accessId}`, 'json'), env.ACCESS.get(`conflict:${accessId}`, 'json'), env.ACCESS.get(`approved:${accessId}`, 'json')]);
     return reply(200, {
       accessId,
       any_installation: isReviewerMock(rec),
-      seat: seat ? { install_short: await installShort(seat.install_id), first_seen: seat.first_seen, last_seen: seat.last_seen, product: seat.product, version: seat.version, ...(seat.moved_at ? { moved_at: seat.moved_at, by: seat.by } : {}) } : null,
+      installs: await Promise.all(installsOf(seat).map(async (i) => ({ install_short: await installShort(i.install_id), first_seen: i.first_seen, last_seen: i.last_seen, product: i.product, version: i.version }))),
       conflict: conflict ? { kind: conflict.kind, count: conflict.count, first_at: conflict.first_at, last_at: conflict.last_at, other_install_short: conflict.other_install_short } : null,
     });
   }
@@ -1911,10 +1921,10 @@ async function admin(request, env, url, ctx) {
     }
     case 'seat-rule': {
       // any: true makes this the store reviewers' mock account: approved only in an access check from a local
-      // portal, there from every installation, binding none; refused from any other portal, off the approved list,
+      // portal, there from every installation, recording none; refused from any other portal, off the approved list,
       // no key from /trial (approvedFor). any: false makes it an ordinary approval again
       if (!approved) return reply(404, { error: `${accessId} is not approved; use add` });
-      if (typeof body.any !== 'boolean') return reply(400, { error: 'any is true (every installation) or false (one installation)' });
+      if (typeof body.any !== 'boolean') return reply(400, { error: 'any is true (the store reviewers\' mock account: approved on a localhost portal only, from any installation, none recorded, and nowhere else) or false (the rule for everyone else)' });
       const rec = { ...approved };
       if (body.any) rec.any_installation = true;
       else delete rec.any_installation;

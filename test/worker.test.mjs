@@ -1595,64 +1595,142 @@ test('/admin/notify-test sends one test e-mail and answers the provider status',
   assert.equal(snapshot(env), before, 'a test writes nothing');
 });
 
-// ---- One approved account, one installation (ACCESS_CHECK.md, "Installations") ----
+// ---- An approved account on any of its own installations, one installation for one account (ACCESS_CHECK.md,
+// "Installations"; until 2026-10-11 one account worked on one installation and a second was refused) ----
 
 const auditsOf = (env) => [...env.ACCESS.m.entries()].filter(([k]) => k.startsWith('audit:')).map(([, v]) => JSON.parse(v));
 const pause = () => new Promise((res) => setTimeout(res, 5));
 
-test('POST /access_check: the first installation binds the account, the same one repeats, another is refused', async () => {
+test('POST /access_check: the first installation is recorded, the same one repeats, a second is approved and recorded beside it', async () => {
   const env = makeEnv();
   await adminPost(env, 'add', { accessId: 'st1234', name: 'Store reviewer (mock portal)' });
   let r = await check(env);
   assert.equal(r.status, 200);
   assert.deepEqual(Object.keys(r.body), ['approved', 'access_id', 'checked', 'until']);
   assert.equal(r.body.approved, true);
-  const seat = await env.ACCESS.get('seat:st1234', 'json');
-  assert.deepEqual(Object.keys(seat), ['install_id', 'first_seen', 'last_seen', 'product', 'version']);
-  assert.deepEqual([seat.install_id, seat.product, seat.version], [IA, 'bridge', '8.0.0']);
-  assert.equal(seat.first_seen, seat.last_seen);
-  assert.equal(env.ACCESS.ttl.get('seat:st1234'), undefined, 'a seat is kept until it is moved, reset or removed');
+  let seat = await env.ACCESS.get('seat:st1234', 'json');
+  assert.deepEqual(Object.keys(seat), ['installs']);
+  assert.equal(seat.installs.length, 1);
+  const first = seat.installs[0];
+  assert.deepEqual(Object.keys(first), ['install_id', 'first_seen', 'last_seen', 'product', 'version']);
+  assert.deepEqual([first.install_id, first.product, first.version], [IA, 'bridge', '8.0.0']);
+  assert.equal(first.first_seen, first.last_seen);
+  assert.equal(env.ACCESS.ttl.get('seat:st1234'), undefined, 'the record is kept until it is reset or removed');
   const index = await env.ACCESS.get(`install:${IA}`, 'json');
   assert.deepEqual(Object.keys(index), ['access_id', 'bound_at']);
   assert.equal(index.access_id, 'st1234');
-  // the same installation later, in capitals and with a new version: yes, and the seat keeps its first time
+  // the same installation later, in capitals and with a new version: yes, and it keeps its first time
   await pause();
   r = await check(env, { install_id: IA.toUpperCase(), version: '8.0.1' });
   assert.equal(r.body.approved, true);
-  const again = await env.ACCESS.get('seat:st1234', 'json');
+  seat = await env.ACCESS.get('seat:st1234', 'json');
+  assert.equal(seat.installs.length, 1);
+  const again = seat.installs[0];
   assert.equal(again.install_id, IA);
-  assert.equal(again.first_seen, seat.first_seen);
-  assert.ok(again.last_seen > seat.last_seen);
+  assert.equal(again.first_seen, first.first_seen);
+  assert.ok(again.last_seen > first.last_seen);
   assert.equal(again.version, '8.0.1');
-  // another installation: refused with the reason, the seat unchanged, the refusal counted
-  r = await check(env, { install_id: IB });
+  // a second installation of the same account: yes, recorded after the first and indexed; nothing refused
+  await pause();
+  r = await check(env, { install_id: IB, version: '8.0.2' });
   assert.equal(r.status, 200);
-  assert.deepEqual(r.body, { approved: false, access_id: 'st1234', reason: 'other_installation', requestPage: `${SITE}/beethoven/request.html` });
+  assert.deepEqual(Object.keys(r.body), ['approved', 'access_id', 'checked', 'until']);
+  assert.equal(r.body.approved, true);
   assert.equal(r.headers.get('access-control-allow-origin'), '*');
   assert.equal(r.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(await env.ACCESS.get('seat:st1234', 'json'), again);
-  assert.equal(await env.ACCESS.get(`install:${IB}`), null, 'a refused installation is bound to nothing');
-  let conflict = await env.ACCESS.get('conflict:st1234', 'json');
-  assert.deepEqual(Object.keys(conflict), ['kind', 'count', 'first_at', 'last_at', 'other_install_short']);
-  assert.deepEqual([conflict.kind, conflict.count, conflict.other_install_short], ['other_installation', 1, short(IB)]);
-  assert.equal(conflict.first_at, conflict.last_at);
-  assert.equal(env.ACCESS.ttl.get('conflict:st1234'), 365 * 86400);
+  seat = await env.ACCESS.get('seat:st1234', 'json');
+  assert.deepEqual(seat.installs.map((i) => [i.install_id, i.version]), [[IA, '8.0.1'], [IB, '8.0.2']]);
+  assert.deepEqual(seat.installs[0], again, 'the first installation is not touched by the second');
+  assert.ok(seat.installs[1].first_seen > again.last_seen);
+  assert.equal((await env.ACCESS.get(`install:${IB}`, 'json')).access_id, 'st1234');
+  assert.equal((await env.ACCESS.get(`install:${IA}`, 'json')).access_id, 'st1234', 'the first stays indexed');
+  assert.equal(await env.ACCESS.get('conflict:st1234'), null, 'a second installation is no refusal');
   const seen = await env.ACCESS.get('seen:bridge:st1234', 'json');
-  assert.deepEqual([seen.approved, seen.reason], [false, 'other_installation']);
-  await pause();
+  assert.deepEqual([seen.approved, 'reason' in seen, seen.checks], [true, false, 3]);
+  // a third, and each keeps working
   r = await check(env, { install_id: IC });
-  assert.equal(r.body.reason, 'other_installation');
-  conflict = await env.ACCESS.get('conflict:st1234', 'json');
-  assert.deepEqual([conflict.count, conflict.other_install_short], [2, short(IC)]);
-  assert.ok(conflict.last_at > conflict.first_at);
-  // the first installation is not disturbed by the refusals
-  r = await check(env);
   assert.equal(r.body.approved, true);
-  const seen2 = await env.ACCESS.get('seen:bridge:st1234', 'json');
-  assert.deepEqual([seen2.approved, seen2.reason], [true, undefined]);
-  // a refused identifier is kept nowhere, not even in a key; only its fingerprint is
-  const where = [...env.ACCESS.m.entries()].filter(([k, v]) => [IB, IC].some((x) => k.includes(x) || String(v).includes(x))).map(([k]) => k);
-  assert.deepEqual(where, []);
+  assert.deepEqual((await env.ACCESS.get('seat:st1234', 'json')).installs.map((i) => i.install_id), [IA, IB, IC]);
+  for (const install_id of [IA, IB, IC]) assert.equal((await check(env, { install_id })).body.approved, true, install_id);
+  assert.deepEqual((await env.ACCESS.get('seat:st1234', 'json')).installs.map((i) => i.install_id), [IA, IB, IC], 'a check from a known installation adds nothing');
+  // the lifecycle's "installed" is the first installation's first check, set once
+  assert.equal((await env.ACCESS.get('installed:st1234', 'json')).at, first.first_seen);
+});
+
+test('POST /access_check: a record written before 2026-10-11 (one installation at the top level) is read, and the next check writes the list', async () => {
+  const env = makeEnv();
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  const old = { install_id: IA, first_seen: '2026-09-30T08:00:00.000Z', last_seen: '2026-09-30T09:00:00.000Z', product: 'bridge', version: '8.0.0', moved_at: '2026-09-30T09:30:00.000Z', by: 'e-mail link' };
+  await env.ACCESS.put('seat:ab1234', JSON.stringify(old));
+  await env.ACCESS.put(`install:${IA}`, JSON.stringify({ access_id: 'ab1234', bound_at: old.moved_at }));
+  // the old record is read as a list of one: the admin routes show it, and another account is refused there
+  let s = await adminPost(env, 'seat', { accessId: 'ab1234' });
+  assert.deepEqual(s.body.installs, [{ install_short: short(IA), first_seen: old.first_seen, last_seen: old.last_seen, product: 'bridge', version: '8.0.0' }]);
+  let a = (await adminList(env)).body.approved[0];
+  assert.deepEqual([a.stage, a.installed_at, a.seat], ['installed', old.first_seen, { bound: true, installations: 1, first_seen: old.first_seen, last_seen: old.last_seen, product: 'bridge', version: '8.0.0' }]);
+  await adminPost(env, 'add', { accessId: 'cd5678', name: 'C. D.' });
+  assert.equal((await check(env, { access_id: 'cd5678', install_id: IA })).body.reason, 'other_account');
+  // the known installation checks: approved, and the record is written in the new shape (moved_at and by go)
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IA, version: '8.0.1' })).body.approved, true);
+  let seat = await env.ACCESS.get('seat:ab1234', 'json');
+  assert.deepEqual(Object.keys(seat), ['installs']);
+  assert.deepEqual(seat.installs.map((i) => Object.keys(i)), [['install_id', 'first_seen', 'last_seen', 'product', 'version']]);
+  assert.deepEqual([seat.installs[0].install_id, seat.installs[0].first_seen, seat.installs[0].version], [IA, old.first_seen, '8.0.1']);
+  // an old record and a new installation: the list starts from the old one
+  await env.ACCESS.put('seat:ab1234', JSON.stringify(old));
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB })).body.approved, true);
+  seat = await env.ACCESS.get('seat:ab1234', 'json');
+  assert.deepEqual(seat.installs.map((i) => i.install_id), [IA, IB]);
+  assert.equal(seat.installs[0].first_seen, old.first_seen);
+  // a refusal recorded while a second installation was refused is settled by the approval
+  await env.ACCESS.put('conflict:ab1234', JSON.stringify({ kind: 'other_installation', count: 3, first_at: old.last_seen, last_at: old.last_seen, other_install_short: short(IC) }));
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IC })).body.approved, true);
+  assert.equal(await env.ACCESS.get('conflict:ab1234'), null);
+  // reset and remove read the old shape too: the index entry goes with it
+  await env.ACCESS.put('seat:ab1234', JSON.stringify(old));
+  await env.ACCESS.put(`install:${IA}`, JSON.stringify({ access_id: 'ab1234', bound_at: old.moved_at }));
+  assert.deepEqual((await adminPost(env, 'reset-seat', { accessId: 'ab1234' })).body, { status: 'reset', accessId: 'ab1234', had_seat: true });
+  assert.equal(await env.ACCESS.get(`install:${IA}`), null);
+  await env.ACCESS.put('seat:ab1234', JSON.stringify(old));
+  await env.ACCESS.put(`install:${IA}`, JSON.stringify({ access_id: 'ab1234', bound_at: old.moved_at }));
+  await adminPost(env, 'remove', { accessId: 'ab1234' });
+  for (const k of ['seat:ab1234', `install:${IA}`]) assert.equal(await env.ACCESS.get(k), null, k);
+});
+
+test('POST /access_check: the ten most recently seen installations are kept; the oldest is dropped with its index entry', async () => {
+  const env = makeEnv();
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  const ids = Array.from({ length: 12 }, (_, n) => `${String(n).padStart(2, '0')}${'c'.repeat(30)}`);
+  for (const install_id of ids.slice(0, 10)) {
+    assert.equal((await check(env, { access_id: 'ab1234', install_id })).body.approved, true, install_id);
+    await pause();
+  }
+  // the second installation checks again, so the first is now the one least recently seen
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: ids[1] })).body.approved, true);
+  await pause();
+  let seat = await env.ACCESS.get('seat:ab1234', 'json');
+  assert.equal(seat.installs.length, 10);
+  // the eleventh: approved; the first (least recently seen) is dropped and unbound, the second stays
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: ids[10] })).body.approved, true);
+  seat = await env.ACCESS.get('seat:ab1234', 'json');
+  assert.deepEqual(seat.installs.map((i) => i.install_id), [...ids.slice(1, 10), ids[10]]);
+  assert.equal(await env.ACCESS.get(`install:${ids[0]}`), null, 'the dropped installation is bound to nothing');
+  assert.equal((await env.ACCESS.get(`install:${ids[1]}`, 'json')).access_id, 'ab1234');
+  assert.equal((await env.ACCESS.get(`install:${ids[10]}`, 'json')).access_id, 'ab1234');
+  // the dropped installation serves another account now, and comes back to this one as a new installation
+  await adminPost(env, 'add', { accessId: 'cd5678', name: 'C. D.' });
+  assert.equal((await check(env, { access_id: 'cd5678', install_id: ids[0] })).body.approved, true);
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: ids[0] })).body.reason, 'other_account');
+  await adminPost(env, 'reset-seat', { accessId: 'cd5678' });
+  await pause();
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: ids[0] })).body.approved, true);
+  seat = await env.ACCESS.get('seat:ab1234', 'json');
+  assert.equal(seat.installs.length, 10);
+  assert.deepEqual(seat.installs.map((i) => i.install_id), [ids[1], ...ids.slice(3, 10), ids[10], ids[0]], 'the third, now the least recently seen, made room');
+  assert.equal(await env.ACCESS.get(`install:${ids[2]}`), null);
+  assert.equal((await env.ACCESS.get(`install:${ids[1]}`, 'json')).access_id, 'ab1234', 'the second, seen again, outlived the third');
+  // "installed" is still the very first check
+  assert.ok((await env.ACCESS.get('installed:ab1234', 'json')).at <= seat.installs[0].first_seen);
 });
 
 test('POST /access_check: without install_id an approved account is refused update_required, unless REQUIRE_INSTALL_ID is "0"', async () => {
@@ -1685,8 +1763,8 @@ test('POST /access_check: without install_id an approved account is refused upda
     assert.equal(r.body.approved, true, value);
     assert.equal(await e.ACCESS.get('seat:st1234'), null, value);
     assert.equal((await check(e)).body.approved, true, value);
-    assert.equal((await e.ACCESS.get('seat:st1234', 'json')).install_id, IA, value);
-    assert.equal((await check(e, { install_id: IB })).body.reason, 'other_installation', value);
+    assert.deepEqual((await e.ACCESS.get('seat:st1234', 'json')).installs.map((i) => i.install_id), [IA], value);
+    assert.equal((await check(e, { install_id: IB })).body.approved, true, value);
     assert.equal((await check(e, { install_id: undefined })).body.approved, true, `${value}: an old build is let through`);
   }
   // wrangler.toml deploys with the rule off until Beethoven 8.0.0 is on the private listing. The student
@@ -1745,6 +1823,7 @@ test('one installation serves one account: another approved account is refused t
   assert.equal(await env.ACCESS.get('seat:bb0002'), null);
   const c = await env.ACCESS.get('conflict:bb0002', 'json');
   assert.deepEqual([c.kind, c.count, c.other_install_short], ['other_account', 1, short(IA)]);
+  assert.equal(env.ACCESS.ttl.get('conflict:bb0002'), 365 * 86400, 'a refusal is kept twelve months');
   assert.equal((await env.ACCESS.get(`install:${IA}`, 'json')).access_id, 'aa0001', 'the installation stays with the first account');
   // bb0002 on its own installation is fine
   assert.equal((await check(env, { access_id: 'bb0002', install_id: IB })).body.approved, true);
@@ -1782,84 +1861,71 @@ test('seat-rule any: an account every installation may use binds nothing (the st
   assert.equal((await check(env, { access_id: 'ab1234', install_id: IC })).body.approved, true);
   assert.equal((await check(env, { install_id: IC, portal: LOCAL })).body.approved, true);
   assert.equal((await env.ACCESS.get(`install:${IC}`, 'json')).access_id, 'ab1234');
-  // back to one installation: the next check binds
+  // back to the rule: the next checks record their installations
   const off = await adminPost(env, 'seat-rule', { accessId: 'st1234', any: false });
   assert.equal(off.body.any_installation, false);
   assert.equal('any_installation' in (await env.ACCESS.get('approved:st1234', 'json')), false);
   assert.equal((await check(env, { install_id: IB })).body.approved, true);
-  assert.equal((await check(env, { install_id: IA })).body.reason, 'other_installation');
+  assert.equal((await check(env, { install_id: IA })).body.approved, true);
+  assert.deepEqual((await env.ACCESS.get('seat:st1234', 'json')).installs.map((i) => i.install_id), [IB, IA]);
   assert.equal((await adminPost(env, 'seat-rule', { accessId: 'zz0000', any: true })).status, 404);
   assert.equal((await adminPost(env, 'seat-rule', { accessId: 'st1234', any: 'yes' })).status, 400);
 });
 
-test('a second installation e-mails the maintainer once a day, with a Move and a Withdraw link', async () => {
+test('a new installation e-mails the maintainer once a day: a notice with one link, Withdraw approval, and nothing refused', async () => {
   const env = mailEnv();
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
   mails.length = 0;
   assert.equal((await check(env, { access_id: 'ab1234' })).body.approved, true);
-  assert.equal(mails.length, 0);
-  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB, version: '8.0.1' })).body.reason, 'other_installation');
+  assert.equal(mails.length, 0, 'the first installation is no news');
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB, version: '8.0.1' })).body.approved, true);
   assert.equal(mails.length, 1);
   const m = mails[0].body;
   assert.deepEqual(m.to, ['maintainer@example.edu']);
-  assert.equal(m.subject, 'Beethoven: ab1234 asked from a second installation');
-  assert.ok(m.text.startsWith('A. Student (ab1234) asked from a second installation; it was refused.\n'), m.text.slice(0, 90));
-  for (const s of [`Installation in use: ${short(IA)}`, `Refused installation: ${short(IB)}`, 'version 8.0.1', 'Refusals: 1']) assert.ok(m.text.includes(s), s);
-  assert.ok(!m.text.includes(IA) && !m.text.includes(IB) && !m.html.includes(IA), 'only fingerprints in the e-mail');
+  assert.equal(m.subject, 'Beethoven: A. Student (ab1234) is using a new installation');
+  assert.ok(m.text.startsWith('A. Student (ab1234) is using Beethoven on a new installation; nothing was refused.\n'), m.text.slice(0, 90));
+  for (const s of ['Installations on record: 2, the new one included', `Installation: ${short(IA)}`, `New installation: ${short(IB)}`, 'version 8.0.1', 'portal ondemand.grid.wayne.edu', 'Nothing was refused: the approval works there from its first check', 'ask the person before you withdraw', 'Doing nothing keeps Beethoven working on every installation that asks', `node admin.mjs seat ab1234`]) assert.ok(m.text.includes(s), s);
+  assert.ok(!m.text.includes(IA) && !m.text.includes(IB) && !m.html.includes(IA) && !m.html.includes(IB), 'only fingerprints in the e-mail');
+  assert.ok(!m.text.includes('Move') && !m.html.includes('Move'), 'no Move link, no move');
   const links = linksIn(m.text);
-  for (const k of ['move', 'withdraw']) {
-    assert.ok(links[k].startsWith('https://service.example/decide?t='), k);
-    assert.ok(m.html.includes(`href="${links[k]}"`), k);
-  }
-  assert.equal(links.approve, null);
-  const cm = claimOf(tokenOf(links.move));
+  assert.ok(links.withdraw.startsWith('https://service.example/decide?t='));
+  assert.ok(m.html.includes(`href="${links.withdraw}"`));
+  assert.deepEqual([links.move, links.approve, links.lab, links.deny, links.cv], [null, null, null, null, null], 'one link: Withdraw approval');
   const cw = claimOf(tokenOf(links.withdraw));
-  assert.deepEqual(Object.keys(cm), ['v', 'access_id', 'decision', 'nonce', 'exp', 'install_id', 'ref']);
-  // both name the refusal e-mail they came in (the conflict record's ref, written once the e-mail went)
-  const cref = (await env.ACCESS.get('conflict:ab1234', 'json')).ref;
-  assert.ok(cref && cm.ref === cref && cw.ref === cref);
-  assert.deepEqual([cm.decision, cm.install_id, cw.decision, cw.install_id], ['move', IB, 'withdraw', undefined]);
-  assert.equal(cm.nonce, cw.nonce);
-  assert.ok((cm.exp - Date.now() / 1000) / 86400 > 13.99);
-  assert.equal(env.ACCESS.ttl.get('conflict_notified:ab1234'), 86400);
-  // more refusals the same day: counted, no second e-mail
-  await check(env, { access_id: 'ab1234', install_id: IB });
-  await check(env, { access_id: 'ab1234', install_id: IC });
+  assert.deepEqual(Object.keys(cw), ['v', 'access_id', 'decision', 'nonce', 'exp', 'ref']);
+  assert.deepEqual([cw.v, cw.access_id, cw.decision], [1, 'ab1234', 'withdraw']);
+  assert.ok((cw.exp - Date.now() / 1000) / 86400 > 13.99);
+  // the link names the e-mail it came in: the notice record's ref, written once the e-mail went
+  const notice = await env.ACCESS.get('notice:ab1234', 'json');
+  assert.deepEqual(Object.keys(notice), ['ref', 'sent_at', 'install_short', 'installations']);
+  assert.deepEqual([notice.ref, notice.install_short, notice.installations], [cw.ref, short(IB), 2]);
+  assert.equal(env.ACCESS.ttl.get('notice:ab1234'), 365 * 86400);
+  assert.equal(env.ACCESS.ttl.get('install_notified:ab1234'), 86400);
+  assert.equal(await env.ACCESS.get('conflict:ab1234'), null, 'a notice is no refusal');
+  // more new installations the same day: recorded, no second e-mail, the notice unchanged
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IC })).body.approved, true);
   assert.equal(mails.length, 1);
-  assert.equal((await env.ACCESS.get('conflict:ab1234', 'json')).count, 3);
-  // opening either link changes nothing
+  assert.deepEqual((await env.ACCESS.get('seat:ab1234', 'json')).installs.map((i) => i.install_id), [IA, IB, IC]);
+  assert.deepEqual(await env.ACCESS.get('notice:ab1234', 'json'), notice);
+  // opening the link changes nothing
   const before = snapshot(env);
-  let p = await open(env, tokenOf(links.move));
+  const p = await open(env, tokenOf(links.withdraw));
   assert.equal(p.status, 200);
-  plainPage(p, 'move question');
-  assert.ok(p.text.includes('Move the approval of A. Student (ab1234) to the new installation?'));
-  assert.ok(p.text.includes(short(IB)));
-  assert.ok(p.text.includes('<button type="submit">Move the approval</button>'));
-  p = await open(env, tokenOf(links.withdraw));
+  plainPage(p, 'withdraw question');
   assert.ok(p.text.includes('Withdraw the approval of A. Student (ab1234)?'));
+  assert.ok(p.text.includes('with 3 installations on record'));
   assert.ok(p.text.includes('<button type="submit">Withdraw approval</button>'));
   assert.equal(snapshot(env), before);
-  // Move: the refused installation becomes the one; the old one is refused from now on
-  p = await press(env, tokenOf(links.move));
-  assert.equal(p.status, 200);
-  plainPage(p, 'moved');
-  assert.ok(p.text.includes('<h1>Moved.</h1>'));
-  const seat = await env.ACCESS.get('seat:ab1234', 'json');
-  assert.equal(seat.install_id, IB);
-  assert.equal(seat.by, 'e-mail link');
-  assert.ok(seat.moved_at);
-  assert.equal(await env.ACCESS.get('conflict:ab1234'), null);
-  assert.equal(await env.ACCESS.get(`install:${IA}`), null);
-  assert.equal((await env.ACCESS.get(`install:${IB}`, 'json')).access_id, 'ab1234');
-  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB })).body.approved, true);
-  assert.equal((await check(env, { access_id: 'ab1234' })).body.reason, 'other_installation');
-  assert.equal(mails.length, 1, 'still one e-mail today');
-  assert.ok(auditsOf(env).some((a) => a.action === 'move-seat' && a.accessId === 'ab1234' && a.by === 'e-mail link'));
-  // the other link of the e-mail is spent
-  p = await press(env, tokenOf(links.withdraw));
-  assert.equal(p.status, 410);
-  assert.ok(p.text.includes('This link was already used'));
-  assert.ok(await env.ACCESS.get('approved:ab1234'), 'still approved');
+  // the next day a new installation is e-mailed again, with a new ref: the day's flag is the one thing between
+  env.ACCESS.m.delete('install_notified:ab1234');
+  const ID = 'dddddddd00000000eeeeeeee11111111';
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: ID })).body.approved, true);
+  assert.equal(mails.length, 2);
+  assert.ok(mails[1].body.text.includes('Installations on record: 4, the new one included'));
+  assert.notEqual((await env.ACCESS.get('notice:ab1234', 'json')).ref, notice.ref);
+  // every installation keeps working, and a known one is no news
+  for (const install_id of [IA, IB, IC, ID]) assert.equal((await check(env, { access_id: 'ab1234', install_id })).body.approved, true, install_id);
+  assert.equal(mails.length, 2);
 });
 
 test('Withdraw approval from that e-mail removes the person and their keys; a late or failed step changes nothing', async () => {
@@ -1872,23 +1938,23 @@ test('Withdraw approval from that e-mail removes the person and their keys; a la
   const p = await press(env, tokenOf(linksIn(mails[0].body.text).withdraw));
   assert.equal(p.status, 200);
   assert.ok(p.text.includes('<h1>Withdrawn.</h1>'));
-  for (const k of ['approved:ab1234', 'seat:ab1234', 'conflict:ab1234', `install:${IA}`]) assert.equal(await env.ACCESS.get(k), null, k);
+  for (const k of ['approved:ab1234', 'seat:ab1234', 'notice:ab1234', `install:${IA}`, `install:${IB}`]) assert.equal(await env.ACCESS.get(k), null, k);
   assert.deepEqual((await check(env, { access_id: 'ab1234' })).body, { approved: false, access_id: 'ab1234', requestPage: `${SITE}/beethoven/request.html` });
   const rev = L.verifyRevocationList(await call(env, 'GET', '/revoked', { origin: null }).then((x) => x.text()), KEYS);
   assert.deepEqual(rev.revoked, [L.peek(key).lid]);
   assert.ok(auditsOf(env).some((a) => a.action === 'remove' && a.by === 'e-mail link'));
-  // a Move link for someone removed in the meantime changes nothing
+  // a Withdraw link for someone removed in the meantime changes nothing
   const env2 = mailEnv();
   await adminPost(env2, 'add', { accessId: 'ab1234', name: 'A. Student' });
   mails.length = 0;
   await check(env2, { access_id: 'ab1234' });
   await check(env2, { access_id: 'ab1234', install_id: IB });
   await adminPost(env2, 'remove', { accessId: 'ab1234' });
-  const late = await press(env2, tokenOf(linksIn(mails[0].body.text).move));
+  const late = await press(env2, tokenOf(linksIn(mails[0].body.text).withdraw));
   assert.equal(late.status, 409);
   assert.ok(late.text.includes('Nothing changed'));
   assert.equal(await env2.ACCESS.get('seat:ab1234'), null);
-  // a failed send starts no day: the next refusal tries again
+  // a failed send starts no day: the next new installation is e-mailed, and its e-mail lists the one missed
   const env3 = mailEnv();
   await adminPost(env3, 'add', { accessId: 'ab1234', name: 'A. Student' });
   mails.length = 0;
@@ -1899,48 +1965,67 @@ test('Withdraw approval from that e-mail removes the person and their keys; a la
   } finally {
     resend.status = 200;
   }
-  assert.equal(env3.ACCESS.m.has('conflict_notified:ab1234'), false);
-  await check(env3, { access_id: 'ab1234', install_id: IB });
+  assert.equal(env3.ACCESS.m.has('install_notified:ab1234'), false);
+  assert.equal(await env3.ACCESS.get('notice:ab1234'), null);
+  await check(env3, { access_id: 'ab1234', install_id: IC });
   assert.equal(mails.length, 2);
-  assert.ok(env3.ACCESS.m.has('conflict_notified:ab1234'));
+  assert.ok(env3.ACCESS.m.has('install_notified:ab1234'));
+  assert.ok(mails[1].body.text.includes(`Installation: ${short(IB)}`));
 });
 
-test('admin: seat shows the binding by fingerprint, reset-seat clears it, list shows seats and conflicts with no identifier', async () => {
+test('admin: seat lists the installations by fingerprint, reset-seat clears them all, list shows counts and dates with no identifier', async () => {
   const env = makeEnv();
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
+  await adminPost(env, 'add', { accessId: 'cd5678', name: 'C. D.' });
   await check(env, { access_id: 'ab1234' });
-  await check(env, { access_id: 'ab1234', install_id: IB });
+  await pause();
+  await check(env, { access_id: 'ab1234', install_id: IB, version: '8.0.1' });
+  // cd5678 asks from ab1234's second installation: refused other_account, on cd5678's record
+  assert.equal((await check(env, { access_id: 'cd5678', install_id: IB })).body.reason, 'other_account');
   let s = await adminPost(env, 'seat', { accessId: 'ab1234' });
   assert.equal(s.status, 200);
-  assert.deepEqual(Object.keys(s.body), ['accessId', 'any_installation', 'seat', 'conflict']);
-  assert.deepEqual(Object.keys(s.body.seat), ['install_short', 'first_seen', 'last_seen', 'product', 'version']);
-  assert.equal(s.body.seat.install_short, short(IA));
-  assert.deepEqual([s.body.conflict.kind, s.body.conflict.count, s.body.conflict.other_install_short], ['other_installation', 1, short(IB)]);
-  assert.equal(s.body.any_installation, false);
+  assert.deepEqual(Object.keys(s.body), ['accessId', 'any_installation', 'installs', 'conflict']);
+  assert.deepEqual(s.body.installs.map((i) => Object.keys(i)), [['install_short', 'first_seen', 'last_seen', 'product', 'version'], ['install_short', 'first_seen', 'last_seen', 'product', 'version']]);
+  assert.deepEqual(s.body.installs.map((i) => [i.install_short, i.version]), [[short(IA), '8.0.0'], [short(IB), '8.0.1']]);
+  assert.ok(s.body.installs[0].first_seen < s.body.installs[1].first_seen, 'oldest first');
+  assert.deepEqual([s.body.any_installation, s.body.conflict], [false, null]);
   assert.ok(!JSON.stringify(s.body).includes(IA) && !JSON.stringify(s.body).includes(IB));
+  const c = await adminPost(env, 'seat', { accessId: 'cd5678' });
+  assert.deepEqual(c.body.installs, []);
+  assert.deepEqual([c.body.conflict.kind, c.body.conflict.count, c.body.conflict.other_install_short], ['other_account', 1, short(IB)]);
   const list = await adminList(env);
-  assert.deepEqual(list.body.seats.map((x) => Object.keys(x)), [['accessId', 'first_seen', 'last_seen', 'product', 'version']]);
+  assert.deepEqual(list.body.seats.map((x) => Object.keys(x)), [['accessId', 'installations', 'first_seen', 'last_seen', 'product', 'version']]);
+  assert.deepEqual(list.body.seats[0], { accessId: 'ab1234', installations: 2, first_seen: s.body.installs[0].first_seen, last_seen: s.body.installs[1].last_seen, product: 'bridge', version: '8.0.1' });
+  const row = list.body.approved.find((a) => a.accessId === 'ab1234');
+  assert.deepEqual(row.seat, { bound: true, installations: 2, first_seen: s.body.installs[0].first_seen, last_seen: s.body.installs[1].last_seen, product: 'bridge', version: '8.0.1' });
+  assert.deepEqual(list.body.approved.find((a) => a.accessId === 'cd5678').seat, { bound: false });
   assert.deepEqual(list.body.conflicts.map((x) => Object.keys(x)), [['accessId', 'kind', 'count', 'first_at', 'last_at']]);
-  assert.equal(list.body.conflicts[0].count, 1);
+  assert.deepEqual([list.body.conflicts[0].accessId, list.body.conflicts[0].kind, list.body.conflicts[0].count], ['cd5678', 'other_account', 1]);
   const text = JSON.stringify(list.body);
   for (const x of [IA, IB, short(IA), short(IB)]) assert.ok(!text.includes(x), x);
-  // reset-seat: the binding, the index and the conflict go; the next installation binds
+  // reset-seat: the record, every index entry, the refusal and the notice go; each installation is recorded again at its next check
+  await env.ACCESS.put('notice:ab1234', JSON.stringify({ ref: 'r'.repeat(22), sent_at: 'x', install_short: short(IB), installations: 2 }));
   const reset = await adminPost(env, 'reset-seat', { accessId: 'ab1234' });
   assert.deepEqual(reset.body, { status: 'reset', accessId: 'ab1234', had_seat: true });
-  for (const k of ['seat:ab1234', 'conflict:ab1234', `install:${IA}`]) assert.equal(await env.ACCESS.get(k), null, k);
-  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB })).body.approved, true);
-  assert.equal((await env.ACCESS.get('seat:ab1234', 'json')).install_id, IB);
+  for (const k of ['seat:ab1234', 'conflict:ab1234', 'notice:ab1234', `install:${IA}`, `install:${IB}`]) assert.equal(await env.ACCESS.get(k), null, k);
   assert.ok(auditsOf(env).some((a) => a.action === 'reset-seat' && a.accessId === 'ab1234'));
-  // nothing on record: null, not an error; not an AccessID: 400
+  // a freed installation serves the account that asks first: IB is cd5678's now, and ab1234 is refused there
+  assert.equal((await check(env, { access_id: 'cd5678', install_id: IB })).body.approved, true);
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB })).body.reason, 'other_account');
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IA })).body.approved, true);
+  assert.deepEqual((await env.ACCESS.get('seat:ab1234', 'json')).installs.map((i) => i.install_id), [IA]);
+  // nothing on record: an empty list, not an error; not an AccessID: 400
   s = await adminPost(env, 'seat', { accessId: 'zz0000' });
-  assert.deepEqual(s.body, { accessId: 'zz0000', any_installation: false, seat: null, conflict: null });
+  assert.deepEqual(s.body, { accessId: 'zz0000', any_installation: false, installs: [], conflict: null });
   assert.deepEqual((await adminPost(env, 'reset-seat', { accessId: 'zz0000' })).body, { status: 'reset', accessId: 'zz0000', had_seat: false });
   assert.equal((await adminPost(env, 'seat', { accessId: 'nope' })).status, 400);
-  // remove clears the seat, the conflict, the index and the CV with the approval
+  // remove drops every index entry with the record, the refusal, the notice and the CV, and touches no other account's
   await check(env, { access_id: 'ab1234', install_id: IC });
   await env.ACCESS.put('cv:ab1234', new Uint8Array([37, 80, 68, 70, 45]), { metadata: { name: 'cv.pdf', kind: 'pdf', size: 5 } });
+  await env.ACCESS.put('notice:ab1234', JSON.stringify({ ref: 'r'.repeat(22), sent_at: 'x', install_short: short(IC), installations: 2 }));
   await adminPost(env, 'remove', { accessId: 'ab1234' });
-  for (const k of ['approved:ab1234', 'seat:ab1234', 'conflict:ab1234', `install:${IB}`, 'cv:ab1234']) assert.equal(await env.ACCESS.get(k), null, k);
+  for (const k of ['approved:ab1234', 'seat:ab1234', 'conflict:ab1234', 'notice:ab1234', `install:${IA}`, `install:${IC}`, 'cv:ab1234']) assert.equal(await env.ACCESS.get(k), null, k);
+  assert.equal((await env.ACCESS.get(`install:${IB}`, 'json')).access_id, 'cd5678');
 });
 
 // ---- The request portal (README.md, "The request portal"): the v2 body the website sends ----
@@ -2297,7 +2382,7 @@ test('mailbox proof: with MAIL_STUDENTS "1" the student confirms from their Wayn
   }
 });
 
-// ---- 2026-09-30 afternoon: links tied to one version, the Move guard, the reviewers' exemption on a
+// ---- 2026-09-30 afternoon: links tied to one version, the Move link (retired 2026-10-11), the reviewers' exemption on a
 // localhost portal only, removal clears the checks, mailbox confirmation required, the lifecycle, and the
 // invitation to the private listing's Google Group (ACCESS_CHECK.md and README.md say the same) ----
 
@@ -2324,42 +2409,45 @@ async function backdate(env, id, fields) {
   await env.ACCESS.put(`approved:${id}`, JSON.stringify({ ...rec, ...fields }));
 }
 
-test('F1 a: Move refuses with a plain page while the refused installation is another account\'s seat, and works once that is cleared', async () => {
+test('F1 a, since 2026-10-11: an old Move link is out of date and changes nothing; an installation serving another account stays refused', async () => {
   const env = mailEnv();
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
   await adminPost(env, 'add', { accessId: 'cd5678', name: 'C. D.' });
   mails.length = 0;
   assert.equal((await check(env, { access_id: 'ab1234' })).body.approved, true);
   assert.equal((await check(env, { access_id: 'cd5678', install_id: IB })).body.approved, true);
-  // ab1234 asks from IB, the installation cd5678 is bound to: refused, and e-mailed with a Move link to IB
-  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB })).body.reason, 'other_installation');
-  const move = tokenOf(linksIn(mails[0].body.text).move);
-  assert.equal(claimOf(move).install_id, IB);
+  // ab1234 asks from IB, the installation cd5678 uses: refused, on record, and nobody is e-mailed
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB })).body.reason, 'other_account');
+  assert.deepEqual([(await env.ACCESS.get('conflict:ab1234', 'json')).kind, mails.length], ['other_account', 0]);
+  // a Move link as the e-mails carried until 2026-10-11: signed with the service's key, with a ref and the
+  // installation to move to. It verifies, and answers out of date on GET and POST alike
+  const exp = Math.floor(Date.now() / 1000) + 600;
+  const move = mint({ v: 1, access_id: 'ab1234', decision: 'move', nonce: 'm'.repeat(22), exp, install_id: IB, ref: 'r'.repeat(22) });
   const before = snapshot(env);
   for (const [why, p] of [['opened', await open(env, move)], ['pressed', await press(env, move)]]) {
-    assert.equal(p.status, 409, why);
+    assert.equal(p.status, 410, why);
     plainPage(p, why);
-    for (const s of ['<h1>This installation is in use by another account</h1>', short(IB), 'cd5678', 'withdraw the approval of cd5678 first', 'node admin.mjs remove cd5678', 'Nothing was changed', ADMIN_PAGE]) assert.ok(p.text.includes(s), `${why}: ${s}`);
+    for (const s of ['<h1>This link is out of date</h1>', 'works on every installation of its own', 'Nothing was changed', ADMIN_PAGE]) assert.ok(p.text.includes(s), `${why}: ${s}`);
     assert.ok(!p.text.includes('<button'), `${why}: no button to press`);
   }
-  assert.equal(snapshot(env), before, 'nothing written and the link not spent');
-  // cd5678's approval withdrawn: the same link now moves ab1234 there
+  assert.equal(snapshot(env), before, 'nothing written and no link spent');
+  assert.equal((await env.ACCESS.get(`install:${IB}`, 'json')).access_id, 'cd5678');
+  // a Move link changed or signed with another key is not valid, and an expired one has expired, as before
+  const foreign = mint({ v: 1, access_id: 'ab1234', decision: 'move', nonce: 'm'.repeat(22), exp, install_id: IB, ref: 'r'.repeat(22) }, 'another-key');
+  assert.equal((await open(env, foreign)).status, 400);
+  const expired = await open(env, mint({ v: 1, access_id: 'ab1234', decision: 'move', nonce: 'm'.repeat(22), exp: exp - 1200, install_id: IB, ref: 'r'.repeat(22) }));
+  assert.equal(expired.status, 410);
+  assert.ok(expired.text.includes('This link has expired'));
+  // once cd5678's approval is withdrawn, ab1234 is approved there at its next check, with no link pressed
   await adminPost(env, 'remove', { accessId: 'cd5678' });
-  const done = await press(env, move);
-  assert.equal(done.status, 200);
-  assert.ok(done.text.includes('<h1>Moved.</h1>'));
-  assert.equal((await env.ACCESS.get('seat:ab1234', 'json')).install_id, IB);
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IB })).body.approved, true);
+  assert.deepEqual((await env.ACCESS.get('seat:ab1234', 'json')).installs.map((i) => i.install_id), [IA, IB]);
   assert.equal((await env.ACCESS.get(`install:${IB}`, 'json')).access_id, 'ab1234');
-  // an index left behind by a seat that moved on blocks nothing
-  const env2 = mailEnv();
-  await adminPost(env2, 'add', { accessId: 'ab1234', name: 'A. Student' });
-  mails.length = 0;
-  await check(env2, { access_id: 'ab1234' });
-  await check(env2, { access_id: 'ab1234', install_id: IC });
-  await env2.ACCESS.put(`install:${IC}`, JSON.stringify({ access_id: 'zz0001', bound_at: '2026-09-01T00:00:00.000Z' }));
-  const moved = await press(env2, tokenOf(linksIn(mails[0].body.text).move));
-  assert.equal(moved.status, 200);
-  assert.equal((await env2.ACCESS.get('seat:ab1234', 'json')).install_id, IC);
+  assert.equal(mails.length, 1, 'the new installation is a notice');
+  // an index left behind by a record that no longer lists the installation blocks nothing
+  await env.ACCESS.put(`install:${IC}`, JSON.stringify({ access_id: 'zz0001', bound_at: '2026-09-01T00:00:00.000Z' }));
+  assert.equal((await check(env, { access_id: 'ab1234', install_id: IC })).body.approved, true);
+  assert.equal((await env.ACCESS.get(`install:${IC}`, 'json')).access_id, 'ab1234');
 });
 
 test('F1 b: seat-rule any is an approval on a localhost portal only; from any other portal the account is not approved at all', async () => {
@@ -2426,8 +2514,8 @@ test('D4: the reviewers\' mock account exists only on a local portal; an ordinar
       assert.deepEqual(Object.keys(r.body), Object.keys(unknown.body));
     }
     assert.equal(kept(env), before, 'only the check records changed: no seat, installation index, conflict, lifecycle or approval write');
-    for (const k of ['seat:st1234', 'conflict:st1234', 'conflict_notified:st1234', 'installed:st1234', `install:${IA}`, `install:${IB}`, `install:${IC}`]) assert.equal(await env.ACCESS.get(k), null, k);
-    assert.equal(mails.length, 0, 'no second-installation e-mail');
+    for (const k of ['seat:st1234', 'conflict:st1234', 'notice:st1234', 'install_notified:st1234', 'installed:st1234', `install:${IA}`, `install:${IB}`, `install:${IC}`]) assert.equal(await env.ACCESS.get(k), null, k);
+    assert.equal(mails.length, 0, 'no new-installation e-mail');
     const seen = await env.ACCESS.get('seen:bridge:st1234', 'json');
     assert.deepEqual([seen.portal, seen.approved, 'reason' in seen], [REAL, false, false]);
     // and the mock portal still answers yes afterwards
@@ -2454,18 +2542,19 @@ test('D4: the reviewers\' mock account exists only on a local portal; an ordinar
     assert.deepEqual(row.seat, { bound: false });
     assert.equal(row.conflicts, 0);
     const seat = await adminPost(env, 'seat', { accessId: 'st1234' });
-    assert.deepEqual(seat.body, { accessId: 'st1234', any_installation: true, seat: null, conflict: null });
+    assert.deepEqual(seat.body, { accessId: 'st1234', any_installation: true, installs: [], conflict: null });
 
-    // an ordinary approval is unaffected everywhere: the real portal binds its first installation and
-    // refuses a second (with the e-mail), a localhost portal is no exemption for it, it is on
+    // an ordinary approval is unaffected everywhere: the real portal records its first installation and
+    // approves a second (with the e-mail about it), a localhost portal is no exemption for it, it is on
     // /allowlist, and /trial issues it a key
     assert.equal((await check(env, { access_id: 'ab1234', portal: REAL, install_id: IA })).body.approved, true);
-    assert.equal((await env.ACCESS.get('seat:ab1234', 'json')).install_id, IA);
-    assert.equal((await check(env, { access_id: 'ab1234', portal: REAL, install_id: IB })).body.reason, 'other_installation');
-    assert.equal((await check(env, { access_id: 'ab1234', portal: LOCAL, install_id: IB })).body.reason, 'other_installation');
+    assert.deepEqual((await env.ACCESS.get('seat:ab1234', 'json')).installs.map((i) => i.install_id), [IA]);
+    assert.equal((await check(env, { access_id: 'ab1234', portal: REAL, install_id: IB })).body.approved, true);
+    assert.equal((await check(env, { access_id: 'ab1234', portal: LOCAL, install_id: IB })).body.approved, true);
     assert.equal((await check(env, { access_id: 'ab1234', portal: LOCAL, install_id: IA })).body.approved, true);
+    assert.deepEqual((await env.ACCESS.get('seat:ab1234', 'json')).installs.map((i) => i.install_id), [IA, IB]);
     assert.equal(mails.length, 1);
-    assert.equal(mails[0].body.subject, 'Beethoven: ab1234 asked from a second installation');
+    assert.equal(mails[0].body.subject, 'Beethoven: A. Student (ab1234) is using a new installation');
     assert.ok((await approvedList(env)).body.accessIds.includes('ab1234'));
     const k = await trial(env, 'tok-ab1234');
     assert.equal(k.status, 200);
@@ -2476,7 +2565,7 @@ test('D4: the reviewers\' mock account exists only on a local portal; an ordinar
     // seat-rule one: st1234 is an ordinary approval again, everywhere
     await adminPost(env, 'seat-rule', { accessId: 'st1234', any: false });
     assert.equal((await check(env, { portal: REAL, install_id: IC })).body.approved, true);
-    assert.equal((await env.ACCESS.get('seat:st1234', 'json')).install_id, IC);
+    assert.deepEqual((await env.ACCESS.get('seat:st1234', 'json')).installs.map((i) => i.install_id), [IC]);
     assert.deepEqual((await approvedList(env)).body.accessIds, ['ab1234', 'st1234']);
     assert.equal((await trial(env, 'tok-st1234')).status, 200);
   } finally {
@@ -2570,48 +2659,54 @@ test('F1 c: decision and CV links belong to one version of the request; a change
   assert.ok(lc.text.includes('admin.mjs cv ab1234'));
 });
 
-test('F1 c: Move and Withdraw belong to the refusal e-mail they came in; a newer one replaces them; no ref is out of date', async () => {
+test('F1 c: a Withdraw link belongs to the e-mail it came in; a newer one replaces it; a reset settles it; no ref is out of date', async () => {
   const env = mailEnv();
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
   mails.length = 0;
   await check(env, { access_id: 'ab1234' });
   await check(env, { access_id: 'ab1234', install_id: IB });
   const first = linksIn(mails[0].body.text);
-  const ref1 = (await env.ACCESS.get('conflict:ab1234', 'json')).ref;
+  const ref1 = (await env.ACCESS.get('notice:ab1234', 'json')).ref;
   assert.match(ref1, /^[A-Za-z0-9_-]{22}$/);
-  // more refusals the same day keep the ref (no new e-mail)
-  await check(env, { access_id: 'ab1234', install_id: IB });
-  assert.equal((await env.ACCESS.get('conflict:ab1234', 'json')).ref, ref1);
-  // the next day another refusal is e-mailed: a new ref, and the first e-mail's links are replaced
-  env.ACCESS.m.delete('conflict_notified:ab1234');
+  assert.equal(claimOf(tokenOf(first.withdraw)).ref, ref1);
+  // another new installation the same day keeps the ref (no new e-mail)
   await check(env, { access_id: 'ab1234', install_id: IC });
+  assert.equal(mails.length, 1);
+  assert.equal((await env.ACCESS.get('notice:ab1234', 'json')).ref, ref1);
+  // the next day a new installation is e-mailed: a new ref, and the first e-mail's link is replaced
+  env.ACCESS.m.delete('install_notified:ab1234');
+  const ID = 'dddddddd00000000eeeeeeee11111111';
+  await check(env, { access_id: 'ab1234', install_id: ID });
   assert.equal(mails.length, 2);
   const second = linksIn(mails[1].body.text);
-  const ref2 = (await env.ACCESS.get('conflict:ab1234', 'json')).ref;
+  const ref2 = (await env.ACCESS.get('notice:ab1234', 'json')).ref;
   assert.notEqual(ref2, ref1);
-  assert.equal(claimOf(tokenOf(second.move)).ref, ref2);
+  assert.equal(claimOf(tokenOf(second.withdraw)).ref, ref2);
   const before = snapshot(env);
-  for (const k of ['move', 'withdraw']) {
-    for (const p of [await open(env, tokenOf(first[k])), await press(env, tokenOf(first[k]))]) {
-      assert.equal(p.status, 409, k);
-      plainPage(p, k);
-      for (const s of ['<h1>This e-mail was replaced</h1>', 'see the newer e-mail', 'Nothing was changed']) assert.ok(p.text.includes(s), `${k}: ${s}`);
-    }
+  for (const p of [await open(env, tokenOf(first.withdraw)), await press(env, tokenOf(first.withdraw))]) {
+    assert.equal(p.status, 409);
+    plainPage(p, 'replaced');
+    for (const s of ['<h1>This e-mail was replaced</h1>', 'see the newer e-mail', 'Nothing was changed']) assert.ok(p.text.includes(s), s);
   }
   assert.equal(snapshot(env), before);
-  const moved = await press(env, tokenOf(second.move));
-  assert.equal(moved.status, 200);
-  assert.equal((await env.ACCESS.get('seat:ab1234', 'json')).install_id, IC);
-  // settled since (moved): a later e-mail's leftover link says so and changes nothing
-  env.ACCESS.m.delete('conflict_notified:ab1234');
-  await check(env, { access_id: 'ab1234', install_id: IA });
-  const third = linksIn(mails[2].body.text);
+  // settled since (the installations reset): the newer e-mail's link says so and changes nothing
   await adminPost(env, 'reset-seat', { accessId: 'ab1234' });
-  const settled = await press(env, tokenOf(third.withdraw));
+  assert.equal(await env.ACCESS.get('notice:ab1234'), null);
+  const settled = await press(env, tokenOf(second.withdraw));
   assert.equal(settled.status, 409);
   assert.ok(settled.text.includes('no longer on record'));
   assert.ok(await env.ACCESS.get('approved:ab1234'), 'still approved');
-  // links without a ref: out of date, nothing changed
+  // a fresh e-mail's link works, and withdraws the whole approval
+  await check(env, { access_id: 'ab1234', install_id: IA });
+  env.ACCESS.m.delete('install_notified:ab1234');
+  await check(env, { access_id: 'ab1234', install_id: IB });
+  const third = linksIn(mails[2].body.text);
+  const gone = await press(env, tokenOf(third.withdraw));
+  assert.equal(gone.status, 200);
+  assert.ok(gone.text.includes('<h1>Withdrawn.</h1>'));
+  assert.equal(await env.ACCESS.get('approved:ab1234'), null);
+  // links without a ref: out of date, nothing changed (a Move link is out of date whatever it carries)
+  await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
   for (const decision of ['move', 'withdraw']) {
     const t = mint({ v: 1, access_id: 'ab1234', decision, nonce: 'l'.repeat(22), exp: Math.floor(Date.now() / 1000) + 600, ...(decision === 'move' ? { install_id: IB } : {}) });
     const p = await press(env, t);
@@ -2734,13 +2829,12 @@ test('F2: the lifecycle (submitted, confirmed, decided, invited, installed) is o
   a = (await adminList(env)).body.approved[0];
   assert.equal(a.stage, 'installed');
   assert.equal(a.installed_at, installed.at);
-  assert.deepEqual(Object.keys(a.seat), ['bound', 'first_seen', 'last_seen', 'product', 'version']);
-  assert.equal(a.seat.bound, true);
-  // a refusal is counted; a reset keeps "installed" and the date
+  assert.deepEqual(Object.keys(a.seat), ['bound', 'installations', 'first_seen', 'last_seen', 'product', 'version']);
+  assert.deepEqual([a.seat.bound, a.seat.installations], [true, 1]);
+  // a second installation is counted, not refused; a reset keeps "installed" and the date
   await check(env, { access_id: 'ab1234', install_id: IB });
   a = (await adminList(env)).body.approved[0];
-  assert.equal(a.conflicts, 1);
-  assert.ok(a.conflict_last_at);
+  assert.deepEqual([a.seat.installations, a.conflicts, 'conflict_last_at' in a], [2, 0, false]);
   await adminPost(env, 'reset-seat', { accessId: 'ab1234' });
   a = (await adminList(env)).body.approved[0];
   assert.deepEqual([a.stage, a.installed_at, a.seat, a.conflicts], ['installed', installed.at, { bound: false }, 0]);
@@ -2975,7 +3069,8 @@ test('F3: with MAIL_STUDENTS "1" the student is told after approval: the invitat
   assert.equal(told.length, 1);
   const s = told[0].body;
   assert.deepEqual(s.to, ['ab1234@wayne.edu']);
-  for (const x of ['You are approved', 'Watch for the Google Groups invitation at a.student@gmail.com', 'install Beethoven from the private Chrome listing (the invitation e-mail has the link)', `How it works: ${SITE}/beethoven/`, 'one installation']) assert.ok(s.text.includes(x), x);
+  for (const x of ['You are approved', 'Watch for the Google Groups invitation at a.student@gmail.com', 'install Beethoven from the private Chrome listing (the invitation e-mail has the link)', `How it works: ${SITE}/beethoven/`, 'Beethoven works on any computer of yours; install it where you work.']) assert.ok(s.text.includes(x), x);
+  assert.ok(!s.text.includes('one installation') && !s.text.includes('move it'), 'the student is no longer told to install it once');
   assert.ok(s.html.includes(`href="${SITE}/beethoven/"`));
   assert.ok(!s.text.includes('/decide') && !s.text.includes('/cv'), 'no maintainer link reaches the student');
   // the admin route tells them the same, once; ONBOARDING_PAGE moves the address

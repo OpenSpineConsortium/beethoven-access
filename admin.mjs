@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // The maintainer's command-line door to the access service, for when the admin page is not handy:
 //   node admin.mjs list          one line per request (mailbox, stage, age) and per approval (grants and
-//                                its stage: submitted, confirmed, decided, invited, installed; the seat
-//                                and the refusals), then denied, revoked and the access checks
+//                                its stage: submitted, confirmed, decided, invited, installed; how many
+//                                installations and the refusals), then denied, revoked and the access checks
 //   node admin.mjs list --json   everything as the service answers it (GET /admin/list)
 //   node admin.mjs add <accessId> "<name>" [<email>] ["<note>"]     approve without a request (both grants)
 //   node admin.mjs approve <accessId> ["<note>"]                     Beethoven and the lab; prints the next
@@ -10,17 +10,20 @@
 //   node admin.mjs approve-lab <accessId> ["<note>"]                 lab membership only
 //   node admin.mjs deny <accessId> ["<reason>"]
 //   node admin.mjs remove <accessId>                                 withdraws approval, revokes the person's keys,
-//                                                                    deletes their seat, CV and access-check records
+//                                                                    deletes their installations, CV and access-check records
 //   node admin.mjs invited <accessId> [clear]                        marks them invited to the Google Group
 //                                                                    Beethoven-users (clear: takes the mark away)
 //   node admin.mjs grant <accessId> extension,lab|lab|extension       sets an approved person's grants exactly
-//   node admin.mjs seat <accessId>                                   the installation the account is bound to
-//                                                                    (by fingerprint) and its refusals
-//   node admin.mjs reset-seat <accessId>                             clears the binding: the next installation
-//                                                                    to check gets the account
+//   node admin.mjs seat <accessId>                                   the installations the account has asked from
+//                                                                    (by fingerprint, one a line, the ten most
+//                                                                    recently seen) and its refusals
+//   node admin.mjs reset-seat <accessId>                             clears the installations on record: each is
+//                                                                    recorded again at its next check, and one
+//                                                                    freed may serve another account
 //   node admin.mjs seat-rule <accessId> any|one                      any: the store reviewers' mock account,
 //                                                                    approved on a localhost portal only (from
-//                                                                    any installation) and nowhere else; one: the rule
+//                                                                    any installation, none recorded) and nowhere
+//                                                                    else; one: the rule for everyone else
 //   node admin.mjs cv <accessId> [<file>]                            saves the CV sent with the request
 //   node admin.mjs notify-test                                       sends the maintainer a test e-mail; prints the provider's answer
 //   node admin.mjs roster                                            the approved list, one AccessID a line (GET
@@ -89,10 +92,10 @@ function requestLine(p) {
   const until = p.stage === 'unconfirmed' ? `, dropped ${at(p.expires_at)}${p.confirm_mail === 'failed' ? ', the confirmation e-mail could not be sent' : ''}` : '';
   return `${p.accessId}  ${p.name || ''}  <${p.google_account || 'no Google account'}>  ${p.stage}: mailbox ${p.mailbox || 'not_verified'}, ${p.age_hours ?? '?'} h old${until}${p.cv ? `, CV ${p.cv.name}` : ''}`;
 }
-// one line per approval: its grants, its stage, the lifecycle's times, the seat and the refusals
+// one line per approval: its grants, its stage, the lifecycle's times, how many installations and the refusals
 function approvalLine(a) {
   const life = `submitted ${at(a.submitted_at)} · confirmed ${at(a.confirmed_at)} · decided ${a.decision || 'approve'} ${at(a.decided_at || a.approved_at)} · invited ${at(a.invited_at)} · installed ${at(a.installed_at)}`;
-  const seat = a.seat && a.seat.bound ? `seat bound (last check ${at(a.seat.last_seen)})` : 'no seat';
+  const seat = a.seat && a.seat.bound ? `${a.seat.installations ?? '?'} installation(s) (last check ${at(a.seat.last_seen)})` : 'no installation';
   return `${a.accessId}  ${a.name || ''}  <${a.google_account || 'no Google account'}>  [${(a.grants || []).join(',')}]  stage ${a.stage}  ${life}  ${seat}, ${a.conflicts || 0} refusal(s)${a.any_installation ? ', the store reviewers\' mock account: approved on a localhost portal only (any installation), not approved anywhere else, not on the approved list, no key' : ''}`;
 }
 switch (cmd) {
@@ -136,7 +139,21 @@ switch (cmd) {
     console.log(JSON.stringify(await call('grant', { accessId: id, grants })));
     break;
   }
-  case 'seat': console.log(JSON.stringify(await call('seat', { accessId: id }), null, 1)); break;
+  case 'seat': {
+    // the installations one a line, oldest first, by fingerprint (the service never gives the identifier)
+    const j = await call('seat', { accessId: id });
+    const installs = j.installs || [];
+    console.log(`${j.accessId}: ${installs.length} installation(s) on record${j.any_installation ? '; the store reviewers\' mock account: approved on a localhost portal only, from any installation, none recorded' : ''}`);
+    for (const i of installs) console.log(`  ${i.install_short}  first check ${at(i.first_seen)}  last check ${at(i.last_seen)}  ${i.product || '?'} ${i.version || '?'}`);
+    // a refusal of kind other_installation is from before 2026-10-11, when a second installation of the account
+    // was refused; the service keeps it until the account's next new installation is approved
+    if (j.conflict) {
+      const c = j.conflict;
+      const why = c.kind === 'other_installation' ? `a second installation of this account, refused under the rule before 2026-10-11 (${c.kind})` : `an installation that serves another account (${c.kind})`;
+      console.log(`  refused ${c.count} time(s) from ${c.other_install_short}, ${why}; first ${at(c.first_at)}, last ${at(c.last_at)}`);
+    }
+    break;
+  }
   case 'reset-seat': console.log(JSON.stringify(await call('reset-seat', { accessId: id }))); break;
   case 'seat-rule': {
     if (a2 !== 'any' && a2 !== 'one') { console.error('seat-rule <accessId> any|one'); process.exit(2); }
