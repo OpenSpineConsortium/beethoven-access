@@ -19,7 +19,6 @@
     "access_id",
     "name",
     "email",
-    "google_account",
     "purpose"
    ],
    "properties": {
@@ -40,7 +39,7 @@
     "google_account": {
      "type": "string",
      "pattern": "^[^\\s@<>\"',;:()\\[\\]\\\\]{1,64}@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\.[a-z]{2,24}$",
-     "description": "the address the person signs in to Chrome with, 120 characters at most"
+     "description": "optional since 2026-10-13 (the store listing is public): the address the person signs in to Chrome with, 120 characters at most, kept when given; until then it was required, the one the private listing's Google Group invited"
     },
     "purpose": {
      "type": "string",

@@ -8,7 +8,8 @@
 //                    VS Code builds then leave the decision to /trial). The maintainer reads the list at
 //                    GET /admin/allowlist.
 //   POST /request    a student asks for access from the website (/beethoven/request.html). Two bodies: v2
-//                    (access_id, name, email, google_account, purpose, an optional CV of 5 MB at most, product)
+//                    (access_id, name, email, purpose, an optional CV of 5 MB at most, product, and google_account,
+//                    optional since the store listing went public on 2026-10-13)
 //                    and the older form's (accessId, name, email, note, product). Validated, rate-limited per
 //                    hashed IP, stored as pending (KV ACCESS; the CV as bytes under cv:<AccessID>), filed as a
 //                    GitHub issue labelled beethoven-access-request when GITHUB_TOKEN is set, and e-mailed to
@@ -21,7 +22,8 @@
 //                    only once they confirm (/confirm), and an unconfirmed request is dropped after 7 days;
 //                    otherwise the maintainer's e-mail says the mailbox is not verified.
 //   GET|POST /decide the page the decision links open, the one Withdraw link of the notice about a new
-//                    installation, and the Done, invited links (the Approve page and the daily reminder). A
+//                    installation, and the Done, invited links (the Approve page; until 2026-10-13 the daily
+//                    reminder too). A
 //                    link is a signed capability (DECIDE_KEY, HMAC-SHA256, 14 days, one use) whose ref ties it
 //                    to the version of what it was sent for: a request's links to that version of the request,
 //                    the Withdraw link to the notice on record (notice:<AccessID>, the last e-mail about the
@@ -29,9 +31,10 @@
 //                    links to the approval. GET only asks the question, the page's one button POSTs the
 //                    decision, which goes through the same code as the admin routes. The Move link of the
 //                    e-mails sent until 2026-10-11 answers "out of date" and is never acted on.
-//   cron (scheduled) once a day: when an account approved for Beethoven has waited more than an hour without
-//                    being marked invited to the Google Group Beethoven-users, one e-mail to the maintainer lists
-//                    them with a Done, invited link each (one a day at most; only the name REMINDER_FROM sends).
+//   cron (scheduled) once a day: nothing since 2026-10-13. Until then it sent the maintainer one e-mail a day
+//                    listing the accounts approved for Beethoven not yet marked invited to the Google Group
+//                    Beethoven-users, the private listing's group; the listing is public since Beethoven 20.0.0,
+//                    so there is no invitation to make. The trigger stays in wrangler.toml, answered with nothing.
 //   GET|POST /confirm the student's "Confirm it is you" link (24 hours, one use); GET asks, POST confirms.
 //   GET|POST /cv     the maintainer's link to a request's CV (14 days, one use); GET shows a page, the
 //                    button POSTs and gets the file: a PDF inline, a Word file as a download, with a fixed
@@ -113,8 +116,9 @@ const PORTAL_HOST = /^(?=.{1,253}(:|$))[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z
 const PRODUCT_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 const VERSION_TEXT = /^[0-9A-Za-z.+-]{1,40}$/;
 const INSTALL_ID = /^[0-9a-f][0-9a-f-]{14,62}[0-9a-f]$/;
-// the Google account a student gives on the request form (lower-cased first): the address the private
-// listing's Google Group invites
+// the Google account a student may give on the request form (lower-cased first). Until 2026-10-13 it was
+// required, the address the private listing's Google Group invited; the listing is public since 20.0.0, so
+// the form may leave it out, and one given is still checked
 const GOOGLE_ACCOUNT = /^[^\s@<>"',;:()[\]\\]{1,64}@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,24}$/;
 const DEFAULT_SITE_ORIGIN = 'https://openspineconsortium.github.io';
 // the maintainer's e-mail about a request: sent through Resend's HTTP API (the domain's DNS is not on
@@ -132,10 +136,10 @@ const CONFIRM_MAILS_PER_DAY = 3;
 const NOTIFY_VERSIONS_PER_DAY = 3;
 // MAIL_STUDENTS "1": a request not confirmed from the mailbox is dropped by KV after 7 days (its CV with it)
 const UNCONFIRMED_KEEP_SECONDS = 7 * 86400;
-// the daily reminder lists an approval once it has waited this long without being marked invited
-const INVITE_REMINDER_AFTER_MS = 3600 * 1000;
 const DECIDE_NONCE_TTL = 30 * 86400;
-// The private listing's Google Group. It is a consumer group today (groups.google.com under the
+// The Google Group of the listing while it was private, until Beethoven 20.0.0 (2026-10-13); the Approve
+// page's step and the admin route invited still name it, so older records read as they did. It is a
+// consumer group (groups.google.com under the
 // maintainer's own account), which has no API for its members: the maintainer invites by hand and marks it
 // done (GROUP_MODE unset or "manual"). GROUP_MODE "workspace" is for when the lab has a Google Workspace:
 // the service then adds the account itself with the Directory API (members.insert on GROUP_ADDRESS), as a
@@ -223,7 +227,7 @@ const isLocalPortal = (portal) => typeof portal === 'string' && LOCAL_PORTAL.tes
 // machine and nowhere else.
 const isReviewerMock = (rec) => !!rec && rec.any_installation === true;
 // Is this record an approval for Beethoven here? The one test every route that honours an approval asks
-// (POST /access_check, GET /admin/allowlist, POST /trial, the daily reminder): the grant "extension", and, for
+// (POST /access_check, GET /admin/allowlist, POST /trial; until 2026-10-13 the daily reminder): the grant "extension", and, for
 // the reviewers' mock record, a local portal. portal is the hostname an access check names; the other
 // routes have none, and none is never local, so the mock record is approved only in an access check
 // from a local portal (there from any installation, recording none). Anywhere else it is no approval: a
@@ -620,9 +624,8 @@ async function requestMail(env, base, accessId, rec, { askedAgain, member, chang
   const how = links
     ? `Each decision link opens a page with one button; nothing is decided until you press it. Use one of the three, once: after that all three stop working. They work until ${links.until}, for this version of the request: if the form is sent again with changes, they answer "replaced" and a newer e-mail comes.${links.cv ? ` The CV link works the same way, once; after that, node admin.mjs cv ${accessId} saves the file.` : ''}`
     : 'The links are off because the service has no DECIDE_KEY; decide on the admin page.';
-  const group = google
-    ? `After Approve for Beethoven, the page that opens shows the next step: add ${google} to the Google Group ${GROUP_NAME}, so the invitation to install Beethoven from the private listing reaches them.`
-    : `After Approve for Beethoven, ask them which Google account they use in Chrome and add it to the Google Group ${GROUP_NAME} (the older form did not ask for it).`;
+  // since 20.0.0 the listing is public: nothing to add them to, and the site's page carries the store's link
+  const group = `After Approve for Beethoven, there is nothing to add them to: Beethoven installs from the Chrome Web Store, whose link is on ${onboardingPage(env)} (the Install section), in any Chrome they use on their own computer.`;
   const typed = `The name${google ? ', the Google account' : ''} and the note were typed by the person asking${rec.cv ? ', and the CV is their file: open it with care' : ''}.`;
   const footer = `Sent by the Beethoven access service because someone filled in the request form. You get one e-mail a day at most about the same request, and one for each changed version (three a day at most). ${mailStudents(env) ? 'The person is e-mailed when you approve them for Beethoven; not for Lab membership only or Deny.' : 'The person is not told when you decide; let them know.'}`;
   const text = [
@@ -678,7 +681,8 @@ async function notifyRequest(env, base, accessId, rec, { repeat, member, newVers
 async function confirmMail(env, base, accessId, rec) {
   const exp = Math.floor(Date.now() / 1000) + CONFIRM_HOURS * 3600;
   const link = `${base}/confirm?t=${await decideToken(env, { access_id: accessId, decision: 'confirm', nonce: newNonce(), exp, ref: rec.ref })}`;
-  const facts = [['Name', oneLine(rec.name)], ['Google account', oneLine(rec.google_account) || '(none given)'], ['What for', oneLine(rec.note) || '(no note)'], ...(rec.cv ? [['CV', oneLine(rec.cv.name)]] : [])];
+  const google = oneLine(rec.google_account);
+  const facts = [['Name', oneLine(rec.name)], ...(google ? [['Google account', google]] : []), ['What for', oneLine(rec.note) || '(no note)'], ...(rec.cv ? [['CV', oneLine(rec.cv.name)]] : [])];
   const lead = `Someone asked for access to Beethoven, the lab's software for the Wayne State grid, with your AccessID, ${accessId}.`;
   const ask = `If it was you, confirm it within ${CONFIRM_HOURS} hours: the request then goes to the lab lead.`;
   const how = 'The link opens a page with one button; nothing is sent until you press it.';
@@ -698,92 +702,26 @@ async function confirmMail(env, base, accessId, rec) {
   return { to: [`${accessId}@wayne.edu`], subject: 'Confirm your Beethoven access request', text, html };
 }
 
-// the student's e-mail when they are approved for Beethoven (MAIL_STUDENTS "1" only): the invitation to
-// watch for, the private listing, and the page that says how it works. No link of the maintainer's.
-function approvalMail(env, accessId, rec, { added = false } = {}) {
-  const google = oneLine(rec.google_account);
-  const how = onboardingPage(env);
+// the student's e-mail when they are approved for Beethoven (MAIL_STUDENTS "1" only): where Beethoven installs
+// from, and the page that says how it works. No link of the maintainer's. Until 2026-10-13 it said to watch for
+// the private listing's Google Groups invitation; the listing is public since 20.0.0, and the service holds no
+// store link of its own: the site's page carries it.
+function approvalMail(env, accessId, rec) {
+  const page = onboardingPage(env);
   const lead = 'You are approved for Beethoven, the lab\'s software for the Wayne State grid.';
-  // added: GROUP_MODE "workspace" put the account in the group itself, and Google sends no invitation then
-  const steps = added ? [
-    `1. Your Google account ${google} is now in the Google Group ${GROUP_NAME}: the lab added it, so there is no invitation to accept.`,
-    `2. Install Beethoven from the private Chrome listing (your lab lead sends you its link), in the Chrome you sign in to with ${google}, on your own computer. Beethoven works on any computer of yours; install it where you work.`,
-    `3. How it works: ${how}`,
-  ] : [
-    google
-      ? `1. Watch for the Google Groups invitation at ${google}, to the group ${GROUP_NAME}, and accept it.`
-      : `1. Watch for the Google Groups invitation to the group ${GROUP_NAME} at the Google account you use in Chrome (your lab lead will ask which one, since the form you used did not).`,
-    `2. Then install Beethoven from the private Chrome listing (the invitation e-mail has the link), in the Chrome you sign in to with ${google || 'that account'}, on your own computer. Beethoven works on any computer of yours; install it where you work.`,
-    `3. How it works: ${how}`,
-  ];
-  const footer = `Sent by the Beethoven access service because your request was approved. If the ${added ? 'link' : 'invitation'} has not come within two days, tell your lab lead.`;
-  const text = [lead, '', ...steps, '', footer].join('\n');
+  const install = `1. Install Beethoven from the Chrome Web Store, in any Chrome you use on your own computer: the link is in the Install section of ${page}. Beethoven works on any computer of yours; install it where you work.`;
+  const footer = 'Sent by the Beethoven access service because your request was approved. If Beethoven does not work once it is installed, tell your lab lead.';
+  const text = [lead, '', install, `2. How it works: ${page}`, '', footer].join('\n');
+  const link = `<a href="${esc(page)}">${esc(page)}</a>`;
   const html = [
     '<div style="font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5">',
     `<p>${esc(lead)}</p>`,
-    `<p>${esc(steps[0])}</p>`,
-    `<p>${esc(steps[1])}</p>`,
-    `<p>3. How it works: <a href="${esc(how)}">${esc(how)}</a></p>`,
+    `<p>${esc(install).replace(esc(page), link)}</p>`,
+    `<p>2. How it works: ${link}</p>`,
     `<p style="color:#555">${esc(footer)}</p>`,
     '</div>',
   ].join('\n');
   return { to: [`${accessId}@wayne.edu`], subject: 'You are approved for Beethoven', text, html };
-}
-
-// the daily reminder: every approval for Beethoven not marked invited after an hour, with a Done, invited
-// link each (its own nonce, 14 days); base is the Worker the links point at (SERVICE_ORIGIN)
-async function reminderMail(env, base, due) {
-  const n = due.length;
-  const exp = Math.floor(Date.now() / 1000) + DECIDE_DAYS * 86400;
-  const rows = [];
-  for (const r of due) {
-    const name = oneLine(r.name) || r.accessId;
-    const google = oneLine(r.google_account);
-    const when = readableTime(r.decided_at || r.approved_at);
-    const line = `${name} (${r.accessId}): ${google || 'no Google account on record (ask them which one they use in Chrome)'}, approved ${when}`;
-    const link = env.DECIDE_KEY && base ? `${base}/decide?t=${await decideToken(env, { access_id: r.accessId, decision: 'invited', nonce: newNonce(), exp, ...(r.ref ? { ref: r.ref } : {}) })}` : null;
-    rows.push({ line, link });
-  }
-  const lead = `${n === 1 ? 'This account is' : 'These accounts are'} approved for Beethoven but not marked invited to the Google Group ${GROUP_NAME} yet:`;
-  const how = rows.some((r) => r.link)
-    ? `Invite them at ${GROUP_MEMBERS_URL} (paste the private listing's address into the invitation's message), then press Done, invited for each: the link opens a page with one button, and works once, for ${DECIDE_DAYS} days.`
-    : `Invite them at ${GROUP_MEMBERS_URL}, then press Mark invited for each on the admin page.`;
-  const footer = 'Sent by the Beethoven access service once a day at most, while an approved account has waited more than an hour for its invitation.';
-  const text = [lead, '', ...rows.flatMap((r) => [r.line, ...(r.link ? [`Done, invited: ${r.link}`] : []), '']), how, '', `The admin page has a Mark invited button for each as well: ${adminPage(env)}`, '', footer].join('\n');
-  const a = (href, label) => `<a href="${esc(href)}">${esc(label)}</a>`;
-  const html = [
-    '<div style="font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5">',
-    `<p>${esc(lead)}</p>`,
-    ...rows.map((r) => `<p>${esc(r.line)}${r.link ? `<br>${a(r.link, 'Done, invited')}` : ''}</p>`),
-    `<p>${esc(how).replace(esc(GROUP_MEMBERS_URL), a(GROUP_MEMBERS_URL, GROUP_MEMBERS_URL))}</p>`,
-    `<p>The admin page has a Mark invited button for each as well: ${a(adminPage(env), adminPage(env))}</p>`,
-    `<p style="color:#555">${esc(footer)}</p>`,
-    '</div>',
-  ].join('\n');
-  return { subject: `Beethoven: ${n} approved account${n === 1 ? '' : 's'} not invited to ${GROUP_NAME} yet`, text, html };
-}
-
-// the cron's work: one reminder a UTC day at most, only from the Worker name REMINDER_FROM (both names run
-// the same cron), only when an approval for Beethoven has waited more than an hour without being marked
-// invited. Not listed: a lab member only, an account whose installation has checked in (it installed from
-// the listing), and the store reviewers' mock account (approvedFor leaves it out: it is never invited).
-async function inviteReminder(env) {
-  if (env.SERVICE_NAME && env.REMINDER_FROM && env.SERVICE_NAME !== env.REMINDER_FROM) return { sent: false, why: 'another name sends it' };
-  if (!env.RESEND_API_KEY) {
-    console.log('mail: no provider configured');
-    return { sent: false, why: 'no provider' };
-  }
-  const flag = `invite_reminder:${today()}`;
-  if (await env.ACCESS.get(flag)) return { sent: false, why: 'sent today' };
-  const [approved, seats, installed] = await Promise.all([records(env, 'approved'), listKeys(env.ACCESS, 'seat:'), listKeys(env.ACCESS, 'installed:')]);
-  const inst = new Set([...seats.map((k) => k.slice('seat:'.length)), ...installed.map((k) => k.slice('installed:'.length))]);
-  const cutoff = Date.now() - INVITE_REMINDER_AFTER_MS;
-  const due = approved.filter((r) => approvedFor(r) && !r.invited_at && !inst.has(r.accessId) && Date.parse(r.decided_at || r.approved_at) <= cutoff);
-  if (!due.length) return { sent: false, why: 'nobody waiting' };
-  const base = env.SERVICE_ORIGIN ? String(env.SERVICE_ORIGIN).replace(/\/$/, '') : '';
-  const m = await sendMail(env, await reminderMail(env, base, due));
-  if (m.sent) await env.ACCESS.put(flag, new Date().toISOString(), { expirationTtl: 2 * 86400 });
-  return { sent: m.sent, count: due.length };
 }
 
 // GROUP_MODE "workspace": add one Google account to the group with the Directory API (members.insert),
@@ -884,8 +822,9 @@ async function accessRequest(request, env, ctx) {
   let cv = null;
   if (v2) {
     if (note.length < 2) return reply(400, { error: 'please say what you will use Beethoven for' });
+    // optional since the listing went public (2026-10-13); one given is still checked, and stored only then
     google = String(b.google_account ?? '').trim().toLowerCase();
-    if (google.length > 120 || !GOOGLE_ACCOUNT.test(google)) return reply(400, { error: 'the Google account is the address you sign in to Chrome with, like name@gmail.com' });
+    if (google && (google.length > 120 || !GOOGLE_ACCOUNT.test(google))) return reply(400, { error: 'the Google account is the address you sign in to Chrome with, like name@gmail.com' });
     // the CV is read in full here, before anything is stored, so a bad file stores nothing
     const c = readCv(b.cv);
     if (c.error) return reply(400, { error: c.error });
@@ -1388,7 +1327,7 @@ async function afterApprove(env, ctx, accessId, result) {
     }
   }
   if (result.newly && mailStudents(env) && env.RESEND_API_KEY) {
-    const mail = sendMail(env, approvalMail(env, accessId, rec, { added: mode === 'workspace' && invite.invited })).catch((e) => console.error(`mail: not sent (${(e && e.name) || 'error'})`));
+    const mail = sendMail(env, approvalMail(env, accessId, rec)).catch((e) => console.error(`mail: not sent (${(e && e.name) || 'error'})`));
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(mail);
     else await mail;
   }
@@ -1517,7 +1456,7 @@ function requestStanding(id, { pending, approved, denied }) {
 async function decideQuestion(env, c, recs) {
   const id = c.access_id;
   const { approved } = recs;
-  if (c.decision === 'approve') return [requestStanding(id, recs), 'Pressing the button puts them on the approved list for Beethoven and the lab: Beethoven works at their next click on its icon once they have installed it from the private listing, and Beethoven for VS Code lets them through at the Wayne State sign-in step.'];
+  if (c.decision === 'approve') return [requestStanding(id, recs), 'Pressing the button puts them on the approved list for Beethoven and the lab: Beethoven works at their next click on its icon once they have installed it from the Chrome Web Store, and Beethoven for VS Code lets them through at the Wayne State sign-in step.'];
   if (c.decision === 'lab') return [requestStanding(id, recs), 'Pressing the button records them as a lab member only: Beethoven and Beethoven for VS Code stay closed to them until you approve them for Beethoven.'];
   if (c.decision === 'deny') return [requestStanding(id, recs), approved ? 'Pressing the button marks the request for Beethoven not approved; they stay a lab member, and the request page will say not approved.' : 'Pressing the button marks the request not approved; they are not told the reason, and the request page will say not approved.'];
   if (!approved) return [`${id} is not on the approved list any more.`];
@@ -1526,7 +1465,7 @@ async function decideQuestion(env, c, recs) {
     return [
       g ? `Google account: ${g}.` : 'There is no Google account on record for them; ask them which one they use in Chrome.',
       { text: `Press the button once the invitation to ${GROUP_NAME} has gone out from`, href: GROUP_MEMBERS_URL, link: 'the group\'s members page' },
-      'It records the date on their approval, and the daily reminder stops listing them.',
+      'It records the date on their approval. Since 20.0.0 the listing is public, so the group adds nothing now; the mark stays for older records.',
     ];
   }
   const installs = installsOf(await env.ACCESS.get(`seat:${id}`, 'json'));
@@ -1544,7 +1483,7 @@ async function invitationStep(env, accessId, rec, invite, who) {
   const g = oneLine(rec.google_account);
   if (invite.invited) {
     return invite.mode === 'workspace' && invite.invited_at
-      ? [`Added ${g} to the Google Group ${GROUP_NAME} (${invite.address}), so the private listing is open to them; they are recorded as invited.`, 'Google sends them no invitation when the service adds them, so no e-mail carries the private listing\'s address: send it to them yourself.']
+      ? [`Added ${g} to the Google Group ${GROUP_NAME} (${invite.address}); they are recorded as invited.`, 'Since 20.0.0 the listing is public, so the group adds nothing now; the step stays for older records.']
       : [`${g || 'Their Google account'} was marked invited to the Google Group ${GROUP_NAME} on ${readableTime(rec.invited_at)}.`];
   }
   const out = [];
@@ -1552,12 +1491,12 @@ async function invitationStep(env, accessId, rec, invite, who) {
   out.push(g ? `Next: add ${g} to the Google Group ${GROUP_NAME}.` : `Next: ask ${who || accessId} which Google account they use in Chrome, and add it to the Google Group ${GROUP_NAME}.`);
   if (g) out.push({ copy: g, label: 'Google account' });
   out.push({ text: 'Invite them on', href: GROUP_MEMBERS_URL, link: 'the group\'s members page' });
-  out.push('Put the private listing\'s address in the invitation\'s message: the student is told the invitation e-mail has the link.');
+  out.push('Since 20.0.0 the listing is public and the student is told where to install from, so the group adds nothing now; this step stays for older records.');
   if (env.DECIDE_KEY) {
     const exp = Math.floor(Date.now() / 1000) + DECIDE_DAYS * 86400;
     const t = await decideToken(env, { access_id: accessId, decision: 'invited', nonce: newNonce(), exp, ...(rec.ref ? { ref: rec.ref } : {}) });
     out.push({ form: { action: `/decide?t=${t}`, button: 'Done, invited' } });
-    out.push({ muted: 'Press Done, invited once the invitation has gone: it records the date on their approval, and the daily reminder stops listing them. It works once.' });
+    out.push({ muted: 'Press Done, invited once the invitation has gone: it records the date on their approval. It works once.' });
   }
   return out;
 }
@@ -1637,12 +1576,12 @@ async function decide(request, env, url, ctx) {
     const told = r.newly && mailStudents(env) && env.RESEND_API_KEY;
     return decidePage(200, 'Approved.', [
       `${who || c.access_id} can click the Beethoven icon now; the extension re-checks within ten minutes.`,
-      `Beethoven for VS Code lets them through at the Wayne State sign-in step. ${told ? (invite && invite.mode === 'workspace' && invite.invited ? 'They are e-mailed that they are approved, and that you send them the private listing\'s address.' : 'They are e-mailed that they are approved, and told to watch for the invitation.') : 'They are not told automatically; let them know.'}`,
+      `Beethoven for VS Code lets them through at the Wayne State sign-in step. ${told ? 'They are e-mailed that they are approved, and where Beethoven installs from.' : 'They are not told automatically; let them know.'}`,
       ...(await invitationStep(env, c.access_id, r.body.record, invite, who)),
       toAdmin('Every request and approval is on'),
     ]);
   }
-  if (c.decision === 'invited') return decidePage(200, 'Marked invited.', [`${label} is recorded as invited to the Google Group ${GROUP_NAME} (${readableTime(r.body.invited_at)}). The daily reminder no longer lists them.`, toAdmin('Every approval is on')]);
+  if (c.decision === 'invited') return decidePage(200, 'Marked invited.', [`${label} is recorded as invited to the Google Group ${GROUP_NAME} (${readableTime(r.body.invited_at)}).`, toAdmin('Every approval is on')]);
   if (c.decision === 'lab') return decidePage(200, 'Approved for lab membership.', [`${label} is recorded as a lab member. Beethoven stays closed to them until you approve them for it: with the Approve for Beethoven link of a later request, or node admin.mjs grant ${c.access_id} extension,lab.`, 'They are not told automatically; let them know.', toAdmin('Every request and approval is on')]);
   if (c.decision === 'deny') return decidePage(200, 'Denied.', [r.body.lab_member ? `${label} is not approved for Beethoven and stays a lab member. They are not told automatically.` : `${label} is not approved. They are not told automatically, and the request page will say not approved if they ask again.`, toAdmin('To change this, use')]);
   const n = r.body.revoked.length;
@@ -1689,7 +1628,7 @@ async function confirmRoute(request, env, url, ctx) {
   const mail = notifyRequest(env, url.origin, c.access_id, rec, { newVersion: true, repeat: !!rec.submitted_at && rec.submitted_at !== rec.requested_at, member: approved && !hasExtension(approved) ? approved : null }).catch((e) => console.error(`mail: not sent (${(e && e.name) || 'error'})`));
   if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(mail);
   else await mail;
-  return decidePage(200, 'Confirmed.', ["Your request went to the lab lead; you hear from them. Once it is approved, an invitation to install Beethoven from the lab's private listing comes to the Google account you gave."]);
+  return decidePage(200, 'Confirmed.', ['Your request went to the lab lead; you hear from them. Once it is approved, an e-mail says where to install Beethoven from.']);
 }
 
 // GET /cv?t=<token> shows what the file is; POST with confirm=1 answers the file and spends the link. A GET
@@ -2020,10 +1959,8 @@ export default {
     if (request.method === 'POST' && p === '/report') return report(request, env);
     return json(404, { error: 'not found' });
   },
-  // the cron ([triggers] in wrangler.toml, once a day): the invitation reminder
-  async scheduled(event, env, ctx) {
-    const work = inviteReminder(env).catch((e) => console.error(`mail: the invitation reminder failed (${(e && e.name) || 'error'})`));
-    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(work);
-    else await work;
-  },
+  // the cron ([triggers] in wrangler.toml, once a day) is answered with nothing. Until 2026-10-13 it sent the
+  // daily reminder of approvals not yet invited to the private listing's Google Group; the listing is public
+  // since Beethoven 20.0.0, so there is no invitation to make. The trigger stays so a deploy changes no schedule.
+  async scheduled() {},
 };

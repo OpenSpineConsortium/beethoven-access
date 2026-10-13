@@ -2045,7 +2045,7 @@ test('POST /request v2: the fields are checked, the request stored, a CV kept as
   const env = makeEnv();
   const bad = [
     [{ access_id: 'abc123' }, /AccessID/], [{ email: 'other@wayne.edu' }, /e-mail must be ab1234@wayne\.edu/], [{ name: 'A' }, /name/],
-    [{ google_account: undefined }, /Google account/], [{ google_account: 'not an address' }, /Google account/], [{ google_account: `${'x'.repeat(120)}@gmail.com` }, /Google account/],
+    [{ google_account: 'not an address' }, /Google account/], [{ google_account: `${'x'.repeat(120)}@gmail.com` }, /Google account/],
     [{ purpose: undefined }, /use Beethoven for/], [{ purpose: ' ' }, /use Beethoven for/], [{ purpose: 'x'.repeat(501) }, /500/],
     [{ cv: 'a string' }, /CV/], [{ cv: cvOf(Buffer.from('hello, not a document'), 'cv.pdf') }, /PDF or a Word file/],
     [{ cv: { name: 'cv.pdf', type: 'application/pdf', base64: '%%%not base64%%%' } }, /CV/], [{ cv: { name: 'cv.pdf', type: 'application/pdf', base64: '' } }, /CV/],
@@ -2110,6 +2110,27 @@ test('POST /request v2: the fields are checked, the request stored, a CV kept as
   assert.equal((await call(env, 'POST', '/admin/add', { headers: ADMIN, body: JSON.stringify({ accessId: 'ab1234', note: 'x'.repeat(9000) }) }).then(asJson)).status, 413);
 });
 
+test('POST /request v2 without a Google account (optional since the listing went public, 2026-10-13): accepted, and the record has none', async () => {
+  for (const over of [{ google_account: undefined }, { google_account: '' }, { google_account: '   ' }]) {
+    const env = makeEnv();
+    const r = await requestV2(env, over);
+    assert.equal(r.status, 202, JSON.stringify(over));
+    assert.deepEqual(r.body, { status: 'pending', mailbox: 'not_verified' });
+    const rec = await env.ACCESS.get('pending:ab1234', 'json');
+    assert.equal('google_account' in rec, false, 'stored only when given');
+    assert.equal(rec.v, 2);
+  }
+  // the maintainer's e-mail then has no Google account line, and says who typed what
+  const env = mailEnv();
+  mails.length = 0;
+  await requestV2(env, { google_account: undefined });
+  assert.equal(mails.length, 1);
+  assert.ok(!mails[0].body.text.includes('Google account'));
+  assert.ok(mails[0].body.text.includes('The name and the note were typed by the person asking'));
+  // one given is still checked
+  assert.equal((await requestV2(mailEnv(), { google_account: 'not an address' })).status, 400);
+});
+
 test('the maintainer\'s e-mail for a v2 request: the Google account, the purpose, the CV link, the mailbox, three decisions', async () => {
   const env = mailEnv();
   mails.length = 0;
@@ -2120,7 +2141,8 @@ test('the maintainer\'s e-mail for a v2 request: the Google account, the purpose
   const m = mails[0].body;
   assert.deepEqual(m.to, ['maintainer@example.edu']);
   for (const s of ['Name: A. Student', 'AccessID: ab1234', 'E-mail: ab1234@wayne.edu', 'Google account: a.student@gmail.com', 'What for: spine segmentation project', `CV: cv.pdf (PDF, ${Math.ceil(PDF.length / 1024)} KB)`, 'Mailbox: not verified', 'Asked from: Beethoven']) assert.ok(m.text.includes(s), s);
-  assert.ok(m.text.includes('add a.student@gmail.com to the Google Group'), 'the step after approving');
+  assert.ok(m.text.includes(`there is nothing to add them to: Beethoven installs from the Chrome Web Store, whose link is on ${SITE}/beethoven/ (the Install section)`), 'the step after approving, since the listing went public (2026-10-13)');
+  assert.ok(!m.text.includes('Google Group') && !m.html.includes('Google Group'), 'no group to invite to');
   const links = linksIn(m.text);
   for (const k of ['approve', 'lab', 'deny']) assert.ok(links[k].startsWith('https://service.example/decide?t='), k);
   assert.ok(links.cv.startsWith('https://service.example/cv?t='));
@@ -2384,10 +2406,11 @@ test('mailbox proof: with MAIL_STUDENTS "1" the student confirms from their Wayn
 
 // ---- 2026-09-30 afternoon: links tied to one version, the Move link (retired 2026-10-11), the reviewers' exemption on a
 // localhost portal only, removal clears the checks, mailbox confirmation required, the lifecycle, and the
-// invitation to the private listing's Google Group (ACCESS_CHECK.md and README.md say the same) ----
+// invitation step of the listing while it was private (ACCESS_CHECK.md and README.md say the same). Since
+// 2026-10-13 the listing is public (Beethoven 20.0.0): the cron sends no reminder, and the student is told
+// where to install from ----
 
 const GROUP_URL = 'https://groups.google.com/g/beethoven-users/members';
-const doneLinks = (text) => [...text.matchAll(/^Done, invited: (\S+)$/gm)].map((m) => m[1]);
 const hoursAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString();
 const openConfirm = (e, t) => call(e, 'GET', `/confirm?t=${t}`, { origin: null }).then(asPage);
 const pressConfirm = (e, t) => call(e, 'POST', `/confirm?t=${t}`, { origin: null, headers: FORM, body: 'confirm=1' }).then(asPage);
@@ -2573,21 +2596,16 @@ test('D4: the reviewers\' mock account exists only on a local portal; an ordinar
   }
 });
 
-test('D4: the daily reminder never lists the reviewers\' mock account, whatever its age', async () => {
+test('D4: the cron lists nobody, the reviewers\' mock account or a student: no reminder is sent since 2026-10-13', async () => {
   const env = mailEnv();
   await adminPost(env, 'add', { accessId: 'st1234', name: 'Store reviewer (mock portal)' });
   await adminPost(env, 'seat-rule', { accessId: 'st1234', any: true });
   await backdate(env, 'st1234', { approved_at: hoursAgo(72) });
-  mails.length = 0;
-  await runCron(env);
-  assert.equal(mails.length, 0, 'the mock alone: nobody waiting');
   await adminPost(env, 'add', { accessId: 'ab1234', name: 'A. Student' });
   await backdate(env, 'ab1234', { approved_at: hoursAgo(2) });
+  mails.length = 0;
   await runCron(env);
-  assert.equal(mails.length, 1);
-  assert.equal(mails[0].body.subject, 'Beethoven: 1 approved account not invited to Beethoven-users yet');
-  assert.ok(mails[0].body.text.includes('ab1234'));
-  assert.ok(!mails[0].body.text.includes('st1234'));
+  assert.equal(mails.length, 0, 'the listing is public: no invitation to make');
 });
 
 test('F1 c: decision and CV links belong to one version of the request; a changed form replaces them, the same form keeps them', async () => {
@@ -2960,96 +2978,24 @@ test('F3: admin invited marks and clears the invitation; admin approve answers t
   assert.deepEqual(auditsOf(env).filter((x) => x.action.startsWith('invited')).map((x) => [x.action, x.by]), [['invited', 'admin'], ['invited-clear', 'admin']]);
 });
 
-test('F3: the daily reminder lists approved accounts not invited after an hour, once a day, each with a Done, invited link', async () => {
-  const ORIGIN = 'https://beethoven-access.example.workers.dev';
-  const env = mailEnv({ SERVICE_ORIGIN: ORIGIN });
-  mails.length = 0;
-  await runCron(env);
-  assert.equal(mails.length, 0, 'nobody waiting: no e-mail');
-  // two due (an hour and more), and one each of: too recent, installed, invited, lab only, the reviewers' mock
+test('F3, retired 2026-10-13: the cron sends no reminder whoever waits, writes nothing, and keeps its trigger', async () => {
+  const env = mailEnv({ SERVICE_ORIGIN: 'https://beethoven-access.example.workers.dev', SERVICE_NAME: 'beethoven-access', REMINDER_FROM: 'beethoven-access' });
+  // what the reminder listed until then: approved for Beethoven, not marked invited, no installation, an hour or more
   await requestV2(env);
   await adminPost(env, 'approve', { accessId: 'ab1234' });
   await backdate(env, 'ab1234', { decided_at: hoursAgo(2) });
   await adminPost(env, 'add', { accessId: 'cd5678', name: 'C. D.' });
   await backdate(env, 'cd5678', { approved_at: hoursAgo(30) });
-  await requestV2(env, { access_id: 'ef0001', email: 'ef0001@wayne.edu', google_account: 'e.f@gmail.com' });
-  await adminPost(env, 'approve', { accessId: 'ef0001' });
-  await backdate(env, 'ef0001', { decided_at: hoursAgo(0.5) });
-  await adminPost(env, 'add', { accessId: 'gh0001', name: 'G. H.' });
-  await backdate(env, 'gh0001', { approved_at: hoursAgo(3) });
-  await check(env, { access_id: 'gh0001', install_id: IB });
-  await adminPost(env, 'add', { accessId: 'ij0001', name: 'I. J.' });
-  await backdate(env, 'ij0001', { approved_at: hoursAgo(3) });
-  await adminPost(env, 'invited', { accessId: 'ij0001' });
-  await adminPost(env, 'add', { accessId: 'kl0001', name: 'K. L.', grants: ['lab'] });
-  await backdate(env, 'kl0001', { approved_at: hoursAgo(3) });
-  await adminPost(env, 'add', { accessId: 'st1234', name: 'Store reviewer (mock portal)' });
-  await adminPost(env, 'seat-rule', { accessId: 'st1234', any: true });
-  await backdate(env, 'st1234', { approved_at: hoursAgo(3) });
   mails.length = 0;
-  await runCron(env);
-  assert.equal(mails.length, 1);
-  const m = mails[0].body;
-  assert.deepEqual(m.to, ['maintainer@example.edu']);
-  assert.equal(m.subject, 'Beethoven: 2 approved accounts not invited to Beethoven-users yet');
-  assert.match(m.text, /^A\. Student \(ab1234\): a\.student@gmail\.com, approved /m);
-  assert.match(m.text, /^C\. D\. \(cd5678\): no Google account on record \(ask them which one they use in Chrome\), approved /m);
-  for (const id of ['ef0001', 'gh0001', 'ij0001', 'kl0001', 'st1234']) assert.ok(!m.text.includes(id), id);
-  assert.ok(m.text.includes(GROUP_URL));
-  assert.ok(m.text.includes(ADMIN_PAGE));
-  const links = doneLinks(m.text);
-  assert.equal(links.length, 2);
-  for (const l of links) {
-    assert.ok(l.startsWith(`${ORIGIN}/decide?t=`), l);
-    assert.ok(m.html.includes(`href="${l}"`));
-    assert.equal(claimOf(tokenOf(l)).decision, 'invited');
-  }
-  assert.deepEqual(links.map((l) => claimOf(tokenOf(l)).access_id), ['ab1234', 'cd5678']);
-  assert.notEqual(claimOf(tokenOf(links[0])).nonce, claimOf(tokenOf(links[1])).nonce, 'each link on its own');
-  const flag = `invite_reminder:${new Date().toISOString().slice(0, 10)}`;
-  assert.ok(env.ACCESS.m.has(flag));
-  assert.equal(env.ACCESS.ttl.get(flag), 2 * 86400);
-  // once a day
-  await runCron(env);
-  assert.equal(mails.length, 1);
-  // a link from it stamps invited; the next day lists only the other
-  const d = await press(env, tokenOf(links[0]));
-  assert.equal(d.status, 200);
-  assert.ok((await env.ACCESS.get('approved:ab1234', 'json')).invited_at);
-  env.ACCESS.m.delete(flag);
-  await runCron(env);
-  assert.equal(mails.length, 2);
-  assert.equal(mails[1].body.subject, 'Beethoven: 1 approved account not invited to Beethoven-users yet');
-  assert.ok(!mails[1].body.text.includes('ab1234') && mails[1].body.text.includes('cd5678'));
-  // a failed send starts no day
-  env.ACCESS.m.delete(flag);
-  try {
-    resend.status = 403;
-    await runCron(env);
-  } finally {
-    resend.status = 200;
-  }
-  assert.equal(env.ACCESS.m.has(flag), false);
-  // only the name REMINDER_FROM names sends it (both Worker names run the cron); no provider: nothing fetched
-  const seed = async (e) => {
-    await adminPost(e, 'add', { accessId: 'cd5678', name: 'C. D.' });
-    await backdate(e, 'cd5678', { approved_at: hoursAgo(3) });
-  };
-  const old = mailEnv({ SERVICE_NAME: 'ashley-service', REMINDER_FROM: 'beethoven-access' });
-  await seed(old);
-  mails.length = 0;
-  await runCron(old);
-  assert.equal(mails.length, 0);
-  const primary = mailEnv({ SERVICE_NAME: 'beethoven-access', REMINDER_FROM: 'beethoven-access' });
-  await seed(primary);
-  await runCron(primary);
-  assert.equal(mails.length, 1);
-  const quiet = mailEnv({ RESEND_API_KEY: undefined });
-  await seed(quiet);
   fetched.length = 0;
-  await runCron(quiet);
-  assert.deepEqual(fetched, []);
-  // what is deployed: the cron, the sending name and the links' origin, GROUP_MODE off; deploy.sh names each Worker
+  const before = snapshot(env);
+  await runCron(env);
+  assert.equal(mails.length, 0, 'the listing is public since Beethoven 20.0.0: no invitation to make');
+  assert.deepEqual(fetched, [], 'nothing fetched');
+  assert.equal(snapshot(env), before, 'nothing written, no day flag');
+  assert.equal(env.ACCESS.m.has(`invite_reminder:${new Date().toISOString().slice(0, 10)}`), false);
+  // what is deployed: the cron stays, answered with nothing, with the two vars nothing reads now; GROUP_MODE off;
+  // deploy.sh names each Worker
   const toml = fs.readFileSync(path.join(REPO, 'wrangler.toml'), 'utf8');
   assert.match(toml, /^\[triggers\]\ncrons = \["0 13 \* \* \*"\]$/m);
   assert.match(toml, /^REMINDER_FROM = "beethoven-access"$/m);
@@ -3058,7 +3004,7 @@ test('F3: the daily reminder lists approved accounts not invited after an hour, 
   assert.match(fs.readFileSync(path.join(REPO, 'deploy.sh'), 'utf8'), /--var "SERVICE_NAME:\$WORKER_NAME"/);
 });
 
-test('F3: with MAIL_STUDENTS "1" the student is told after approval: the invitation, the private listing, how it works', async () => {
+test('F3: with MAIL_STUDENTS "1" the student is told after approval: where Beethoven installs from (the Chrome Web Store, since 2026-10-13), how it works', async () => {
   const env = mailEnv({ MAIL_STUDENTS: '1' });
   mails.length = 0;
   await requestV2(env);
@@ -3069,7 +3015,8 @@ test('F3: with MAIL_STUDENTS "1" the student is told after approval: the invitat
   assert.equal(told.length, 1);
   const s = told[0].body;
   assert.deepEqual(s.to, ['ab1234@wayne.edu']);
-  for (const x of ['You are approved', 'Watch for the Google Groups invitation at a.student@gmail.com', 'install Beethoven from the private Chrome listing (the invitation e-mail has the link)', `How it works: ${SITE}/beethoven/`, 'Beethoven works on any computer of yours; install it where you work.']) assert.ok(s.text.includes(x), x);
+  for (const x of ['You are approved', `1. Install Beethoven from the Chrome Web Store, in any Chrome you use on your own computer: the link is in the Install section of ${SITE}/beethoven/.`, `2. How it works: ${SITE}/beethoven/`, 'Beethoven works on any computer of yours; install it where you work.']) assert.ok(s.text.includes(x), x);
+  for (const x of ['Google Group', 'invitation', 'private']) assert.ok(!s.text.includes(x) && !s.html.includes(x), `no ${x}: the listing is public`);
   assert.ok(!s.text.includes('one installation') && !s.text.includes('move it'), 'the student is no longer told to install it once');
   assert.ok(s.html.includes(`href="${SITE}/beethoven/"`));
   assert.ok(!s.text.includes('/decide') && !s.text.includes('/cv'), 'no maintainer link reaches the student');
@@ -3222,30 +3169,26 @@ test('an old Done, invited link is replaced when its approval was removed and ma
   plainPage(d, 'replaced: a ref, then none');
   assert.ok(d.text.includes('<h1>This approval was replaced</h1>'));
   assert.equal(snapshot(env), before, 'nothing written and the link not spent');
-  // made for an approval with no ref (add, through the daily reminder); removed, then approved from a request
-  const env2 = mailEnv({ SERVICE_ORIGIN: 'https://beethoven-access.example.workers.dev' });
+  // made for an approval with no ref (add; the daily reminder made such links until 2026-10-13, and the ones it
+  // sent live 14 days): removed, then approved from a request
+  const noRef = (id) => mint({ v: 1, access_id: id, decision: 'invited', nonce: crypto.randomBytes(16).toString('base64url'), exp: Math.floor(Date.now() / 1000) + 14 * 86400 });
+  const env2 = mailEnv();
   await adminPost(env2, 'add', { accessId: 'cd5678', name: 'C. D.' });
-  await backdate(env2, 'cd5678', { approved_at: hoursAgo(2) });
-  mails.length = 0;
-  await runCron(env2);
-  const [old] = doneLinks(mails[0].body.text);
-  assert.equal('ref' in claimOf(tokenOf(old)), false);
+  const old = noRef('cd5678');
+  assert.equal('ref' in claimOf(old), false);
   await adminPost(env2, 'remove', { accessId: 'cd5678' });
   await requestV2(env2, { access_id: 'cd5678', email: 'cd5678@wayne.edu', google_account: 'c.d@gmail.com' });
   assert.equal((await adminPost(env2, 'approve', { accessId: 'cd5678' })).status, 200);
   assert.ok((await env2.ACCESS.get('approved:cd5678', 'json')).ref);
   before = snapshot(env2);
-  d = await press(env2, tokenOf(old));
+  d = await press(env2, old);
   assert.equal(d.status, 409);
   assert.ok(d.text.includes('<h1>This approval was replaced</h1>'));
   assert.equal(snapshot(env2), before);
   // a link and an approval that both have no ref still work (go2432 and hy9698 were added that way)
-  const env3 = mailEnv({ SERVICE_ORIGIN: 'https://beethoven-access.example.workers.dev' });
+  const env3 = mailEnv();
   await adminPost(env3, 'add', { accessId: 'ef0001', name: 'E. F.' });
-  await backdate(env3, 'ef0001', { approved_at: hoursAgo(2) });
-  mails.length = 0;
-  await runCron(env3);
-  d = await press(env3, tokenOf(doneLinks(mails[0].body.text)[0]));
+  d = await press(env3, noRef('ef0001'));
   assert.equal(d.status, 200);
   assert.ok(d.text.includes('<h1>Marked invited.</h1>'));
   assert.ok((await env3.ACCESS.get('approved:ef0001', 'json')).invited_at);
@@ -3274,7 +3217,7 @@ test('a second confirmation link for a version already confirmed answers Already
   assert.equal(snapshot(env), before, 'nothing written');
 });
 
-test('GROUP_MODE "workspace" with MAIL_STUDENTS "1": a student the service added is not told to wait for an invitation', async () => {
+test('GROUP_MODE "workspace" with MAIL_STUDENTS "1": the page says what the service did; the student is told where to install from, as in manual mode', async () => {
   const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   const SA = JSON.stringify({ type: 'service_account', client_email: 'beethoven-groups@lab-project.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }), token_uri: 'https://oauth2.googleapis.com/token' });
   const WS = { MAIL_STUDENTS: '1', GROUP_MODE: 'workspace', GROUP_SA_KEY: SA, GROUP_ADMIN_SUBJECT: 'admin@openspineconsortium.com' };
@@ -3290,10 +3233,11 @@ test('GROUP_MODE "workspace" with MAIL_STUDENTS "1": a student the service added
   // Google accepts: the account is in the group, and no invitation e-mail will carry the listing's address
   const a = await approveOnce(mailEnv(WS));
   assert.equal(a.page.status, 200);
-  for (const x of ['Added a.student@gmail.com to the Google Group Beethoven-users', 'send it to them yourself', 'that you send them the private listing']) assert.ok(a.page.text.includes(x), x);
-  for (const x of ['Your Google account a.student@gmail.com is now in the Google Group Beethoven-users', 'there is no invitation to accept', 'your lab lead sends you its link', 'If the link has not come within two days']) assert.ok(a.text.includes(x), x);
-  for (const x of ['Watch for the Google Groups invitation', 'the invitation e-mail has the link']) assert.ok(!a.text.includes(x) && !a.html.includes(x), x);
-  // Google refuses: the manual step, and the student is told to watch for the invitation, as in manual mode
+  for (const x of ['Added a.student@gmail.com to the Google Group Beethoven-users', 'the group adds nothing now', 'and where Beethoven installs from']) assert.ok(a.page.text.includes(x), x);
+  // since 2026-10-13 the student's e-mail is the same in either mode: the store, never the group
+  for (const x of ['1. Install Beethoven from the Chrome Web Store', `2. How it works: ${SITE}/beethoven/`]) assert.ok(a.text.includes(x), x);
+  for (const x of ['Google Group', 'invitation', 'your lab lead sends you its link']) assert.ok(!a.text.includes(x) && !a.html.includes(x), x);
+  // Google refuses: the manual step on the page, and the same e-mail to the student
   google.insertStatus = 403;
   let b;
   try {
@@ -3302,8 +3246,8 @@ test('GROUP_MODE "workspace" with MAIL_STUDENTS "1": a student the service added
     google.insertStatus = 200;
   }
   assert.ok(formAction(b.page.text, 'Done, invited'));
-  assert.ok(b.page.text.includes('told to watch for the invitation'));
-  for (const x of ['Watch for the Google Groups invitation at a.student@gmail.com', 'the invitation e-mail has the link', 'If the invitation has not come within two days']) assert.ok(b.text.includes(x), x);
+  assert.ok(b.page.text.includes('and where Beethoven installs from'));
+  assert.ok(b.text.includes('1. Install Beethoven from the Chrome Web Store') && !b.text.includes('invitation'));
 });
 
 // ---- Lab storage, read only (storage.js): who may read which folders of the lab's storage on the grid ----

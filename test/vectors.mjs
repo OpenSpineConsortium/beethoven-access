@@ -349,6 +349,8 @@ const SCENARIOS = [
     await gridToken(env);
     return admin(env, 'grid-token-withdraw', {});
   }],
+  // last, so the seeded random bytes the scenarios above draw stay theirs and no earlier vector moves
+  ['request-no-google-account', '/request', 'The form without a Google account, optional since the listing went public (2026-10-13): stored', (env) => exchange(env, { method: 'POST', path: '/request', body: requestBody({ google_account: undefined }) })],
 ];
 
 /** Every vector, made now from the Worker: a Map of file name to its object. */

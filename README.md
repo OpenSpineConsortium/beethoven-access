@@ -46,7 +46,7 @@ address. The same code runs under two Worker names, `beethoven-access` and `ashl
 |---|---|---|
 | `GET /allowlist` | nobody since 2026-10-01: Beethoven for VS Code read it while `services.json` named it (`beethoven.allowlistUrl`; `ashley.allowlistUrl` in 3.0.0, both empty by default) | an empty list, in the shape of the list Beethoven for VS Code bundles (`extension/media/allowlist.json` there) (`{"about":"The list of approved AccessIDs is not published; ...","accessIds":[]}`), open CORS, cached one minute. Until 2026-10-01 it gave every approved AccessID to anyone, which the browser edition's privacy statement (version 8) does not allow; the maintainer reads the list at `GET /admin/allowlist` |
 | `POST /request` | the request page, `https://openspineconsortium.com/beethoven/request.html` (the browser edition's form sends `product: "bridge"`); `/ashley/request.html`, which older builds open, redirects there | a student asks for access: stored as pending with its CV, e-mailed to the maintainer with three decision links and a CV link (see [The request portal](#the-request-portal)), filed as an issue labelled `beethoven-access-request` when `GITHUB_TOKEN` is set; answers pending, approved or denied |
-| `GET` and `POST /decide?t=<token>` | the links in the e-mails: Approve for Beethoven, Lab membership only, Deny; Withdraw approval (in the e-mail about a new installation); Done, invited (on the Approve page and in the daily reminder) | GET shows one question and one button; the button POSTs the decision. Each link acts only on the version of the request or notice e-mail it was sent for ([The link](#the-request-portal)); the Move link of the e-mails sent until 2026-10-11 answers out of date |
+| `GET` and `POST /decide?t=<token>` | the links in the e-mails: Approve for Beethoven, Lab membership only, Deny; Withdraw approval (in the e-mail about a new installation); Done, invited (on the Approve page; until 2026-10-13 in the daily reminder too) | GET shows one question and one button; the button POSTs the decision. Each link acts only on the version of the request or notice e-mail it was sent for ([The link](#the-request-portal)); the Move link of the e-mails sent until 2026-10-11 answers out of date |
 | `GET` and `POST /confirm?t=<token>` | the student's "Confirm it is you" link, when `MAIL_STUDENTS` is `"1"` | GET shows the request and one button; the button confirms it and sends it to the maintainer |
 | `GET` and `POST /cv?t=<token>` | the CV link in the maintainer's e-mail | GET shows what the file is and one button; the button answers the file, once |
 | `POST /storage_request` | the lab storage page, `https://openspineconsortium.com/beethoven/storage.html` | someone asks to read named folders of the lab's storage on the grid: stored as a storage request, e-mailed to the maintainer with an Approve read access and a Deny link ([Lab storage, read only](#lab-storage-read-only)); answers pending, approved (they read every folder asked for already) or denied |
@@ -56,7 +56,7 @@ address. The same code runs under two Worker names, `beethoven-access` and `ashl
 | `GET /revoked` | every installation, daily | the signed revocation list |
 | `POST /report` | installations that allow error reports | an issue labelled `diagnostic-report`; repeats add a count |
 | `/admin/*` | `https://openspineconsortium.com/beethoven/admin.html`, `admin.mjs`, the VS Code edition's `publish.sh` (`revoke-lid`) | `list`, `approve` (optional `grants`), `deny`, `add` (optional `grants`), `remove`, `invited`, `grant`, `seat`, `reset-seat`, `seat-rule`, `cv`, `revoke-lid`, `notify-test`, and for lab storage `storage-list`, `storage-approve`, `storage-deny`, `storage-add`, `storage-remove`, the two lists the grid reads as plain text, `roster.txt` and `readers.txt`, and the grid token: `grid-token` (`POST` makes one, replacing any earlier one, and answers it once; `GET` shows when it was made and last read) and `grid-token-withdraw`; behind the bearer token `ADMIN_TOKEN`. `roster.txt` and `readers.txt` also take the grid token, and nothing else does ([The grid token](#the-grid-token)). The admin page's contract (every field of `list` and `storage-list`, every write) is in [ACCESS_CHECK.md, "The admin routes"](ACCESS_CHECK.md#the-admin-routes-the-admin-pages-contract) |
-| cron, `0 13 * * *` | Cloudflare, once a day | the invitation reminder: one e-mail listing the approvals for Beethoven not marked invited to the Google Group Beethoven-users after an hour ([The private listing](#the-private-listing)) |
+| cron, `0 13 * * *` | Cloudflare, once a day | answered with nothing since 2026-10-13; until then the invitation reminder, one e-mail listing the approvals for Beethoven not marked invited to the Google Group Beethoven-users after an hour ([The store listing](#the-store-listing)) |
 | `GET /health` | you | `{"ok":true}` |
 
 ## Two names
@@ -82,9 +82,10 @@ namespaces (the ids in `wrangler.toml`; none is ever created for a name other th
 the same secrets, all from files in the vendor folder, `IP_SALT` included (`ip_salt`), so an address is
 hashed the same way by both and the per-connection limits count across both. An approval, a removal or
 a withdrawn key is seen by both at once (within KV's minute). The one difference is `SERVICE_NAME`,
-which `deploy.sh` gives each name (its own name): both run the daily cron, and only the name
-`REMINDER_FROM` in `wrangler.toml` (`beethoven-access`) sends the invitation reminder, whose links point
-at `SERVICE_ORIGIN` (the same host). The Approve and Deny links in an e-mail
+which `deploy.sh` gives each name (its own name): both run the daily cron, answered with nothing since
+2026-10-13 (until then only the name `REMINDER_FROM` in `wrangler.toml`, `beethoven-access`, sent the
+invitation reminder, whose links pointed at `SERVICE_ORIGIN`, the same host; both vars stay, read by
+nothing). The Approve and Deny links in an e-mail
 carry the host the request was posted to, and either host decides them. The browser edition still
 sends `product: "bridge"` on the wire, so 4.0.0 to 7.0.0 are one product to the service, and the VS
 Code edition's 3.0.0 sent `ashley`; the e-mail calls them Beethoven and Beethoven for VS Code.
@@ -257,8 +258,9 @@ application, or the grid stops following the lists. The free plan covers a lab.
 
 ## The approved list, day to day
 
-- A student fills in `request.html`: AccessID, name, `AccessID@wayne.edu`, the Google account they
-  use in Chrome, what they will use Beethoven for, and a CV if they like (PDF or Word, 5 MB at most).
+- A student fills in `request.html`: AccessID, name, `AccessID@wayne.edu`, what they will use Beethoven
+  for, and if they like the Google account they use in Chrome (optional since 2026-10-13) and a CV (PDF
+  or Word, 5 MB at most).
   The Worker checks the fields, stores a pending record (the CV beside it) and e-mails you about it
   ([The request portal](#the-request-portal)); with `GITHUB_TOKEN` set it also opens an issue titled
   `Access request: <AccessID>` labelled `beethoven-access-request`.
@@ -270,19 +272,21 @@ application, or the grid stops following the lists. The free plan covers a lab.
   request for the lab only. A record written before grants existed counts as both. A lab member who
   later asks for Beethoven through the form gets a new request, and the e-mail says they are a lab
   member already.
-- After Approve for Beethoven, invite the student's Google account to the Google Group
-  **Beethoven-users**, the group of the private listing ([The private listing](#the-private-listing));
-  that is what lets them install Beethoven. The page the Approve link opens shows the step: "Next: add
-  <Google account> to the Google Group Beethoven-users", the address in a box with a Copy button, the
-  group's members page, and a **Done, invited** button to press once the invitation has gone. The admin
-  page has **Mark invited** for the same (`admin.mjs invited <id>`). Once a day, when an approval has
-  waited more than an hour without that mark, you get one e-mail listing them, each with its own Done,
-  invited link. With `MAIL_STUDENTS` `"1"` the student is e-mailed at approval: watch for the Google
-  Groups invitation at their Google account, then install from the private listing.
+- After Approve for Beethoven there is nothing to add them to: since 20.0.0 (2026-10-13) Beethoven
+  installs from the Chrome Web Store, whose link is on the site's Beethoven page ([The store
+  listing](#the-store-listing)), and your e-mail about the request says so. With `MAIL_STUDENTS` `"1"`
+  the student is e-mailed at approval: install it from the store, in any Chrome on their own computer
+  (the link is in the Install section of that page), and how it works. Until 2026-10-13 this step was
+  the invitation to the private listing's Google Group **Beethoven-users**: the Approve page still shows
+  it ("Next: add <Google account> to the Google Group Beethoven-users", the address in a box with a Copy
+  button, the group's members page, and a **Done, invited** button), and the admin page its **Mark
+  invited** (`admin.mjs invited <id>`), so older records read as they did; nobody needs the mark now,
+  and the daily reminder that listed approvals without it is no longer sent.
 - Each request and approval carries its lifecycle with times: submitted, confirmed (the mailbox, when
-  `MAIL_STUDENTS` is `"1"`), decided (approve, lab or deny), invited, and installed (when the account's
-  first installation checks in). The admin page and `admin.mjs list` show each approval's stage in one
-  line: `lab`, `approved` (not invited yet), `invited` or `installed`, with its installations and refusals.
+  `MAIL_STUDENTS` is `"1"`), decided (approve, lab or deny), invited (a mark made until 2026-10-13), and
+  installed (when the account's first installation checks in). The admin page and `admin.mjs list` show
+  each approval's stage in one line: `lab`, `approved` (not marked invited), `invited` or `installed`,
+  with its installations and refusals.
 - In Beethoven for VS Code the student runs the wizard: the Wayne State sign-in step passes (since 2026-10-01 the
   services file names no list, so the step no longer fetches `/allowlist`), and the trial button asks `/trial` for a
   key, which `/trial` refuses to anyone not approved. The Worker asks Microsoft who they are, requires the approved
@@ -322,7 +326,7 @@ application, or the grid stops following the lists. The free plan covers a lab.
   it names is `localhost` or a name under `.localhost` (with or without a port), and there from any
   installation, recording none. From any other portal the answer is the plain no an unknown account gets:
   no installation is recorded or changed, no refusal is recorded and nobody is e-mailed. It
-  is not on the approved list (`GET /admin/allowlist`), `/trial` issues it no key, and the daily reminder skips it. The admin page
+  is not on the approved list (`GET /admin/allowlist`), `/trial` issues it no key, and the daily reminder, while it was sent, skipped it. The admin page
   and `admin.mjs list` still show it, marked as the store reviewers' mock account.
   (From 2026-09-30 afternoon until then, a check for `st1234` from a real portal was treated as an
   ordinary approval held to one installation, and `st1234` was on the public `/allowlist`.)
@@ -343,7 +347,7 @@ KiB at most; every other route keeps its 8 KiB cap):
 | `access_id` | two letters and four digits |
 | `email` | exactly `<access_id>@wayne.edu` |
 | `name` | 2 to 80 characters |
-| `google_account` | required: the address the person signs in to Chrome with (lower-cased, 120 characters at most); it is the one to add to the private listing's Google Group |
+| `google_account` | optional since 2026-10-13, and kept when given: the address the person signs in to Chrome with (lower-cased, 120 characters at most). Until then it was required, the one to add to the private listing's Google Group |
 | `purpose` | required: what they will use Beethoven for, 2 to 500 characters |
 | `cv` | optional: `base64` is the file (a `data:...;base64,` prefix is allowed), 5 MB at most once decoded. The kind is read from the file's first bytes (`%PDF-` a PDF, `PK 03 04` Word .docx, `D0 CF 11 E0 A1 B1 1A E1` Word .doc); anything else is refused. `name` is kept as text (120 characters); `type` is ignored |
 | `product` | optional: `bridge` from Beethoven's page; shown in the e-mail only |
@@ -388,11 +392,12 @@ version; once either is used, the other answers "Already confirmed" and sends no
 refuses the student's address or cannot be reached, you are not e-mailed: the
 student is answered 502 ("the confirmation e-mail ... could not be sent just now"), and the request
 waits unconfirmed, marked `confirm_mail: "failed"`. When you approve someone for Beethoven, they are
-e-mailed "You are approved for Beethoven": watch for the Google Groups invitation at their Google
-account, then install from the private Chrome listing (the invitation e-mail has the link), and how it
-works (`ONBOARDING_PAGE`, `https://openspineconsortium.com/beethoven/`). When `GROUP_MODE` `"workspace"`
-has added them to the group itself, Google sends no invitation, so their e-mail says instead that they
-are in the group and that you send them the listing's link. With `MAIL_STUDENTS` anything
+e-mailed "You are approved for Beethoven": install it from the Chrome Web Store, in any Chrome they use
+on their own computer, the link being in the Install section of `ONBOARDING_PAGE`
+(`https://openspineconsortium.com/beethoven/`), and how it works, on the same page. Until 2026-10-13
+the e-mail said to watch for the Google Groups invitation and install from the private listing, or,
+when `GROUP_MODE` `"workspace"` had added them to the group itself, that you would send the listing's
+link; since the listing is public the e-mail is the same in either mode. With `MAIL_STUDENTS` anything
 else (it is `"0"` today) nobody but you is e-mailed, every e-mail says `Mailbox: not verified. Anyone
 can type an AccessID; check with the person before approving`, and a request has no end. Turn it on
 only after the domain is verified at Resend (below): until then Resend refuses every address but the
@@ -424,11 +429,11 @@ work"), three a day an AccessID at most; past that the newest version is on the 
 The e-mail, from `Beethoven access` with the subject `Beethoven access request: <AccessID> (<name>)`
 ("asked for access to Beethoven", or "to Beethoven for VS Code" when the form names that edition, product
 `ashley`, `vscode` or `beethoven-vscode`; an "Asked from" line then names it), says who asked (name,
-AccessID, e-mail, Google account, what for, the CV's name, kind and size, the mailbox status, "Already:
+AccessID, e-mail, Google account when given, what for, the CV's name, kind and size, the mailbox status, "Already:
 a lab member" when that is so, when, and which product sent them) and carries three decision links,
 **Approve for Beethoven**, **Lab membership only** and **Deny**, the **View the CV** link when there is
-a CV, the step after approving (add the Google account to the private listing's group) and the admin
-page's address. A link opens a page with one question and one button; nothing is decided until the
+a CV, the step after approving (nothing to add them to: Beethoven installs from the Chrome Web Store,
+whose link is on the site's Beethoven page) and the admin page's address. A link opens a page with one question and one button; nothing is decided until the
 button is pressed, and the question page shows the request as it stands when you open it. Approve for
 Beethoven writes the same approved record the admin page writes, with `grants: ["extension","lab"]` and
 `by: "e-mail link"` in place of `"admin"`; Lab membership only writes `grants: ["lab"]` (added to what
@@ -439,11 +444,22 @@ not e-mailed about the decision; tell them. With `"1"` they are e-mailed when ap
 and answered pending, the Worker logs the provider's status (never the key or an address), and the
 admin page lists the request as before.
 
-## The private listing
+## The store listing
 
-Beethoven is published on the Chrome Web Store with **Private** visibility, installable only by the
-people the listing's Google Group names, and on no other store. The group is the list of who may
-install; the approval check is what lets an installation work. Both are needed.
+Beethoven is on the Chrome Web Store with **Public** visibility since 20.0.0 (2026-10-13): anyone can
+install it, from the link on the site's Beethoven page (https://openspineconsortium.com/beethoven/, the
+Install section; the service holds no store link of its own), in any Chrome on their own computer, and
+the approval check (`POST /access_check`) is what lets an installation work. That retired the
+invitation machinery: the Google account is optional on the request form, the approval e-mails say
+where to install from and name no group, and the daily reminder is not sent (the cron is answered with
+nothing; `[triggers]` stays in `wrangler.toml`, so a deploy changes no schedule). The Approve page's
+invitation step, the admin route `invited` and the `invited_at` marks stay as they were, so the admin
+page and older records keep working; nobody needs the mark now.
+
+**Until 20.0.0: the private listing.** Beethoven was published with **Private** visibility, installable
+only by the people the listing's Google Group named, and on no other store. The group was the list of
+who may install; the approval check what lets an installation work. Both were needed. The steps, as
+they were:
 
 1. At https://groups.google.com, signed in with your own Google account, the group is
    **Beethoven-users** (https://groups.google.com/g/beethoven-users). Who can join: "Only invited users";
@@ -521,7 +537,7 @@ records Resend lists at Spaceship; once Resend says Verified, write a sender suc
 | `decide_key` | `DECIDE_KEY` | `deploy.sh` makes it: 32 random bytes, base64. A new key makes every link already sent answer "not valid" |
 | `notify_to` | `NOTIFY_TO` | `deploy.sh` writes `go2432@wayne.edu`; several addresses may be given, separated by commas |
 | `mail_from` | `MAIL_FROM` | `deploy.sh` writes `Beethoven access <onboarding@resend.dev>` (the file written before 2026-09-30 said Ashley and was rewritten then) |
-| `google_group_sa.json`, `google_group_admin` | `GROUP_SA_KEY`, `GROUP_ADMIN_SUBJECT` | only for `GROUP_MODE` `"workspace"` ([The private listing](#the-private-listing)); absent today, and nothing is sent |
+| `google_group_sa.json`, `google_group_admin` | `GROUP_SA_KEY`, `GROUP_ADMIN_SUBJECT` | only for `GROUP_MODE` `"workspace"` ([The store listing](#the-store-listing)); absent today, and nothing is sent |
 
 `deploy.sh` pipes each file into `wrangler secret put`; no value is on a command line or in its output.
 `wrangler.toml` needs no binding for these.
@@ -530,7 +546,7 @@ records Resend lists at Spaceship; once Resend says Verified, write a sender suc
 the JSON `{"v":1,"access_id":"ab1234","decision":"approve","nonce":"<22 characters>","exp":<seconds>,"ref":"<22 characters>"}`
 and `signature` is the base64url of HMAC-SHA256 over `payload` with `DECIDE_KEY`. `decision` is
 `approve`, `lab` or `deny` in a request e-mail, `withdraw` in the e-mail about a new installation, and
-`invited` on the Approve page and in the daily reminder (`move`, with `"install_id"`, the installation
+`invited` on the Approve page (and, until 2026-10-13, in the daily reminder; `move`, with `"install_id"`, the installation
 to move to, was in the e-mail about a second installation until 2026-10-11; such a link still verifies
 and answers "This link is out of date"); `/cv` takes `cv` and `/confirm` takes `confirm`, and a link of
 one kind opened at another address is "not valid". `ref` is the version the link was sent for: of the
@@ -681,7 +697,7 @@ installations through `/revoked`.
 | ACCESS | `req:<hash>:<day>` | requests from one connection (a salted hash; the address itself is never stored) | 2 days |
 | ACCESS | `notified:<AccessID>` | when the last e-mail about this person's request was sent | 24 hours |
 | ACCESS | `notify_versions:<AccessID>:<day>` | e-mails that day about new versions of this person's request (3 at most) | 2 days |
-| ACCESS | `invite_reminder:<day>` | when that day's invitation reminder went (one a day) | 2 days |
+| ACCESS | `invite_reminder:<day>` | when that day's invitation reminder went (one a day); none written since 2026-10-13 | 2 days |
 | ACCESS | `decide:<nonce>` | a used e-mail link (a decision, a CV view, a confirmation, a Done, invited): AccessID, decision, when | 30 days (a link lives 14 days at most) |
 | ACCESS | `storage_pending:<AccessID>` | a lab storage request: name, e-mail, note (what for), `folders`, `requested_at`, `submitted_at`, `ref`, `mailbox: "not_verified"` | until approved, denied or removed |
 | ACCESS | `storage:<AccessID>` | a reader: name, e-mail, note, `folders`, `approved_at`, the request decided (`requested_at`, `submitted_at`, `mailbox`, `ref`), `decided_at`, `decision` (`approve` or `add`), `by` | until removed |
@@ -704,7 +720,8 @@ is not today.
 Reports are capped at 64 KB, ten per installation per day; every string is stripped of hidden
 comments and zero-width characters and truncated. Requests: the AccessID is two letters and four
 digits, the e-mail must be `AccessID@wayne.edu`, the name 2 to 80 characters, the purpose (note) 500 at
-most and required on the current form, the Google account required on the current form, a CV 5 MB at
+most and required on the current form, the Google account optional since 2026-10-13 and checked when
+given, a CV 5 MB at
 most and a PDF or a Word file by its bytes, ten requests per connection per day; the issue body
 carries the AccessID, name and note, not the e-mail. A CV costs the Worker CPU time to decode: tens of
 milliseconds for 5 MB in plain JavaScript (measured in Node on the maintainer's machine: parse about
@@ -752,8 +769,9 @@ date, the reviewers' exemption on a localhost portal only, removal deleting the
 access-check records, mailbox confirmation required (7 days, the refused confirmation e-mail, the
 confirmed form sent again), the lifecycle and the stages of `/admin/list` (its whole contract), the
 Approve page's invitation step (the copy box and the hash of its script, Done, invited once), `admin
-invited`, the daily reminder (who is listed, once a day, only from `REMINDER_FROM`), the student's
-e-mail at approval, and the Workspace adapter against a stub of Google (the JWT verified with the public
+invited`, the cron answering nothing since 2026-10-13 (until then the daily reminder: who was listed,
+once a day, only from `REMINDER_FROM`), the student's e-mail at approval (where to install from, since
+2026-10-13), the form without a Google account, and the Workspace adapter against a stub of Google (the JWT verified with the public
 key, the insert, a member already there, every failure falling back to the manual step, never called
 when `GROUP_MODE` is not `"workspace"`). Since 2026-10-01 also: the store reviewers' mock account
 approved at localhost from two installations and refused, with nothing written and nobody e-mailed,

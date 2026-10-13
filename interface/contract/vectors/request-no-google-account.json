@@ -1,0 +1,38 @@
+{
+ "vector": "request-no-google-account",
+ "route": "/request",
+ "summary": "The form without a Google account, optional since the listing went public (2026-10-13): stored",
+ "request": {
+  "method": "POST",
+  "path": "/request",
+  "headers": {
+   "origin": "https://openspineconsortium.com",
+   "content-type": "application/json"
+  },
+  "body": {
+   "v": 2,
+   "access_id": "cd5678",
+   "name": "C. D.",
+   "email": "cd5678@wayne.edu",
+   "purpose": "spine segmentation for my thesis",
+   "product": "bridge"
+  }
+ },
+ "answer": {
+  "status": 202,
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "authorization, content-type",
+   "access-control-allow-methods": "GET, POST, OPTIONS",
+   "access-control-allow-origin": "https://openspineconsortium.com",
+   "access-control-max-age": "600",
+   "cache-control": "no-store",
+   "content-type": "application/json",
+   "vary": "origin"
+  },
+  "body": {
+   "status": "pending",
+   "mailbox": "confirm"
+  }
+ }
+}

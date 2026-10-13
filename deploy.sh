@@ -93,13 +93,13 @@ done
 # (a secret cannot be set on a Worker that does not exist), and until its secrets arrive every route that
 # needs one refuses (503 or 401), which is safe. Each secret put deploys a new version with that secret.
 echo "== deploy ($WORKER_NAME)"
-# SERVICE_NAME tells each name which one it is: both run the daily cron, and only the one REMINDER_FROM
-# (wrangler.toml) names sends the invitation reminder
+# SERVICE_NAME tells each name which one it is (until 2026-10-13 the one REMINDER_FROM names sent the daily
+# invitation reminder; the cron is answered with nothing now)
 OUT=$(W deploy --name "$WORKER_NAME" --var "SERVICE_NAME:$WORKER_NAME" 2>&1) || { echo "$OUT" | tail -20; exit 5; }
 URL=$(printf '%s' "$OUT" | grep -oE "https://$WORKER_NAME\.[a-z0-9.-]+\.workers\.dev" | head -1)
 [ -n "$URL" ] || { echo "$OUT" | tail -20; echo "no workers.dev address for $WORKER_NAME in the deploy output"; exit 5; }
 echo "  $URL"
-# the cron wrangler attached (the daily invitation reminder), as wrangler reports it
+# the cron wrangler attached (answered with nothing since 2026-10-13), as wrangler reports it
 printf '%s\n' "$OUT" | grep -E "schedule:" | sed -E 's/^[[:space:]]*/  cron /' || echo "  no cron in the deploy output: check [triggers] in wrangler.toml"
 
 echo "== secrets ($WORKER_NAME)"
