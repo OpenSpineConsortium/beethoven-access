@@ -222,7 +222,7 @@ jobs:
           exit 4
 
       # deploy.sh's deploy and check, for each name in turn: the code with SERVICE_NAME set to the name (both
-      # run the daily cron; only REMINDER_FROM in wrangler.toml sends the reminder), then /health on the
+      # run the daily cron, answered with nothing since 2026-10-13), then /health on the
       # workers.dev address the deploy printed. ashley-service is not deployed when beethoven-access fails. A
       # failure after beethoven-access took the code leaves the two names on different code until a run
       # deploys both, and the run's summary says so.

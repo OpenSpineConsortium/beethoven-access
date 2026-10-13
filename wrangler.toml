@@ -48,12 +48,15 @@ GROUP_MODE = "manual"
 GROUP_ADDRESS = "beethoven-users@openspineconsortium.com"
 # "how it works", in the student's e-mail after approval (MAIL_STUDENTS "1")
 ONBOARDING_PAGE = "https://openspineconsortium.com/beethoven/"
-# The daily reminder of approvals not yet invited: both names run the cron below, only this one sends it
-# (deploy.sh gives each name SERVICE_NAME, its own name), and its Done, invited links point here.
+# Until 2026-10-13 the daily reminder of approvals not yet invited to the private listing's group: both names
+# ran the cron below, only this one sent it (deploy.sh gives each name SERVICE_NAME, its own name), and its
+# Done, invited links pointed here. The listing is public since Beethoven 20.0.0, so nothing reads these two
+# now; they stay so a deploy changes no var.
 REMINDER_FROM = "beethoven-access"
 SERVICE_ORIGIN = "https://beethoven-access.openspineconsortium.workers.dev"
 
-# once a day, 13:00 UTC (9:00 in Detroit in summer, 8:00 in winter): the invitation reminder
+# once a day, 13:00 UTC (9:00 in Detroit in summer, 8:00 in winter), answered with nothing since 2026-10-13
+# (it was the invitation reminder); kept so a deploy changes no schedule
 [triggers]
 crons = ["0 13 * * *"]
 

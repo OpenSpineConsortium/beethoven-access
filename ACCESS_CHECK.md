@@ -62,7 +62,7 @@ no-store` and `content-type: application/json`; none carries `access-control-all
 | 200 | `{"approved":true,"access_id":"st1234","checked":"<ISO time>","until":null}` | the account is on the approved list with the grant `extension` and the installation rule lets it through; `until` is the approval's end date when the record has one (none does today) |
 | 200 | `{"approved":false,"access_id":"st1234","requestPage":"https://openspineconsortium.com/beethoven/request.html"}` | the account is not on the list (never approved, pending, denied or removed), is a lab member only (grants `["lab"]`), is the store reviewers' mock account checked from a portal that is not local (The decision, step 2), or the name is not one the list can hold. `requestPage` is `BEETHOVEN_REQUEST_PAGE` in `wrangler.toml` for product `bridge` or `beethoven`, and `REQUEST_PAGE` for any other; both are `https://openspineconsortium.com/beethoven/request.html` since 2026-09-30, the one request page of both editions (before, `REQUEST_PAGE` was `/ashley/request.html`, which now redirects there) |
 | 200 | `{"approved":false,"access_id":"st1234","reason":"other_account","requestPage":"..."}` | approved, but this installation is on another approved account's record (one installation serves one account) |
-| 200 | `{"approved":false,"access_id":"st1234","reason":"update_required","requestPage":"..."}` | approved, but the check carries no `install_id` (a build before 8.0.0) and `REQUIRE_INSTALL_ID` is not `"0"`. What the extension says: "Install the current Beethoven from the lab's private listing." |
+| 200 | `{"approved":false,"access_id":"st1234","reason":"update_required","requestPage":"..."}` | approved, but the check carries no `install_id` (a build before 8.0.0) and `REQUIRE_INSTALL_ID` is not `"0"`. What the extension said until 20.0.0: "Install the current Beethoven from the lab's private listing."; the listing is public since 20.0.0 (2026-10-13), and the extension's words are its own |
 | 400 | `{"error":"..."}` | a malformed body (see the table above), or not JSON |
 | 405 | `{"error":"POST the check here"}` | any method but POST and OPTIONS |
 | 413 | `{"error":"too much text"}` | a body over 8 KiB |
@@ -101,7 +101,7 @@ In order:
    then, a check from another portal was treated as an ordinary approval held to one installation, so
    the mock account could approve a first installation at the real portal.) The same test leaves the
    mock account off the approved list (`GET /admin/allowlist`), refuses it a key at `/trial` and leaves
-   it out of the daily reminder (`approvedFor` in `worker.js`).
+   it out of the daily reminder while that was sent, until 2026-10-13 (`approvedFor` in `worker.js`).
 3. Otherwise the installation rule decides ([Installations](#installations)).
 
 The list itself is never returned on this route: one id in, yes or no out. Since 2026-10-01 it is not
@@ -211,7 +211,8 @@ reached. Not approved: the strip's one button reads "Ask for access"; the answer
 minutes. `other_account`: "This installation of Beethoven is already set up for another account. Ask
 your lab lead to move it to yours." with no button; the maintainer's remedy is `reset-seat` or
 `remove` on the other account, which frees the installation (there is no Move). `update_required`:
-"Install the current Beethoven from the lab's private listing." `other_installation`, which the
+"Install the current Beethoven from the lab's private listing." (its words until 20.0.0; the listing is
+public since 2026-10-13). `other_installation`, which the
 service answered until 2026-10-11, is still read as before ("This account is already set up on
 another computer. Ask your lab lead to move it here." with no button), for a service deployed before
 that day. Re-checked on a click of the icon once the last answer is a day old or was no, and about
@@ -266,6 +267,12 @@ and four digits). Errors are `{"error":"<plain sentence>"}` with 400 (a bad body
 wrong), 404 (no such route, or nobody by that AccessID where one is needed) or 409 (the state does not
 allow it); the page shows the sentence as it is.
 
+**Since 2026-10-13 (Beethoven 20.0.0) the store listing is public** (README.md, The store listing). That
+retired the invitation: the request form's Google account is optional, the approval e-mails say Beethoven
+installs from the Chrome Web Store (the link is on https://openspineconsortium.com/beethoven/), and the
+daily reminder is not sent. The `group`, `invite`, `invited` and `invited_at` parts below stay as they
+were, so the admin page and older records keep working; nobody needs the mark now.
+
 **`GET /admin/list`** answers 200:
 
 ```
@@ -288,7 +295,7 @@ A **request** (`pending`):
 | Field | Meaning |
 |---|---|
 | `accessId`, `name`, `email` | as the form sent them (`email` is always `<accessId>@wayne.edu`) |
-| `google_account` | the Google account to invite (absent on a request from the older form) |
+| `google_account` | the Google account given, when one was (optional since 2026-10-13; absent on a request from the older form); until then the one to invite |
 | `note` | what they will use Beethoven for (the form's "purpose") |
 | `cv` | `{ "name", "kind": "pdf"\|"docx"\|"doc", "size" }` when a CV came with it; fetch it with `POST /admin/cv` |
 | `mailbox` | `"waiting"` (the confirmation e-mail went; not confirmed yet), `"confirmed"`, or `"not_verified"` (MAIL_STUDENTS is `"0"`: nobody checked the mailbox) |
@@ -306,14 +313,14 @@ An **approval** (`approved`):
 |---|---|
 | `accessId`, `name`, `email`, `google_account`, `note` | carried from the request, or given with `add` |
 | `grants` | `["extension","lab"]`, `["lab"]` or `["extension"]` |
-| `stage` | `"lab"` (lab member only), `"approved"` (Beethoven, not invited yet), `"invited"`, `"installed"` (its first installation has checked in) |
+| `stage` | `"lab"` (lab member only), `"approved"` (Beethoven, not marked invited), `"invited"` (a mark made until 2026-10-13), `"installed"` (its first installation has checked in) |
 | `approved_at` | the first approval; `decided_at` and `decision` (`"approve"` or `"lab"`) the latest decision |
 | `submitted_at`, `confirmed_at`, `mailbox` | the lifecycle of the request it came from, when it came from one |
-| `invited_at`, `invited_by` | when it was marked invited to Beethoven-users, and by what (`"e-mail link"`, `"admin"`, `"workspace"`) |
+| `invited_at`, `invited_by` | when it was marked invited to Beethoven-users (a step of the private listing, until 2026-10-13), and by what (`"e-mail link"`, `"admin"`, `"workspace"`) |
 | `installed_at` | when the first installation checked in (set once; a reset keeps it) |
 | `seat` | `{ "bound": true, "installations", "first_seen", "last_seen", "product", "version" }` or `{ "bound": false }`: how many installations the account has asked from (the ten most recently seen are kept), the oldest one's first check, the newest one's last check and what it runs (since 2026-10-11; before, one installation and `moved_at` after a Move) |
 | `conflicts` | the number of refusals on record (0 when none); `conflict_last_at` the last one |
-| `any_installation` | `true` only for the store reviewers' mock account: approved in an access check from a localhost portal only (from any installation, recording none), refused from any other portal, not on the approved list, no key from `/trial`, never in the daily reminder. Absent on every other approval. The page's Installation column says "Any installation: binds none: the store reviewers' mock account, on a localhost portal only", and its stage reads "Store reviewers" while the stage is `approved` |
+| `any_installation` | `true` only for the store reviewers' mock account: approved in an access check from a localhost portal only (from any installation, recording none), refused from any other portal, not on the approved list, no key from `/trial`, never in the daily reminder while it was sent. Absent on every other approval. The page's Installation column says "Any installation: binds none: the store reviewers' mock account, on a localhost portal only", and its stage reads "Store reviewers" while the stage is `approved` |
 | `lids` | the licence ids issued to them by `/trial` |
 
 **`GET /admin/allowlist`** answers 200 with `{"about":"AccessIDs approved to use Beethoven","accessIds":[...]}`:
@@ -329,7 +336,7 @@ A **denial** (`denied`): `accessId`, `name`, `email`, `google_account`, `note`, 
 
 | Route | Body | Answer | What it does |
 |---|---|---|---|
-| `approve` | `{ accessId, grants?, note? }` (`grants` absent = `["extension","lab"]`; `["lab"]` = Lab only) | `{ status: "approved", accessId, record, invite }`; 404 when there is no request | the Approve buttons. `invite` is `null` for Lab only; otherwise `{ group: "Beethoven-users", members_url, google_account (null when the older form gave none), invited: bool, mode: "manual"\|"workspace", address? (workspace), invited_at? (set when the service added them), error? (why the service could not add them) }`. When `invited` is false the page shows "Next: add <google_account> to the Google Group Beethoven-users", the address with a copy button, the members page and a Mark invited button |
+| `approve` | `{ accessId, grants?, note? }` (`grants` absent = `["extension","lab"]`; `["lab"]` = Lab only) | `{ status: "approved", accessId, record, invite }`; 404 when there is no request | the Approve buttons. `invite` is `null` for Lab only; otherwise `{ group: "Beethoven-users", members_url, google_account (null when the older form gave none), invited: bool, mode: "manual"\|"workspace", address? (workspace), invited_at? (set when the service added them), error? (why the service could not add them) }`. When `invited` is false the page shows "Next: add <google_account> to the Google Group Beethoven-users", the address with a copy button, the members page and a Mark invited button; since 2026-10-13 the listing is public, so there is no group to add anyone to, and the step and the mark stay for older records' sake |
 | `deny` | `{ accessId, reason? }` | `{ status: "denied", accessId, lab_member? }`; 409 when approved for Beethoven | Deny |
 | `invited` | `{ accessId }`, or `{ accessId, clear: true }` | `{ status: "invited", accessId, invited_at }` (`already: true` added when it was marked before; the date is not changed) or `{ status: "not-invited", accessId }`; 404 when not approved, 409 when lab only | Mark invited (stamps `invited_at`, `invited_by: "admin"`) |
 | `reset-seat` | `{ accessId }` | `{ status: "reset", accessId, had_seat }` | Reset seat: the account's installations are forgotten (the record, every index entry, the refusal and the notice); each is recorded again at its next check, and one freed may serve another account |
